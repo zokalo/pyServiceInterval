@@ -1,0 +1,5 @@
+In ubuntu:
+- error:
+ImportError: No module named '_tkinter', please install the python3-tk package
+- solution:
+$ sudo apt-get install python3-tk
