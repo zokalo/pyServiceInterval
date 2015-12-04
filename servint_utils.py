@@ -4,6 +4,7 @@
 ServiceInterval
 Application implementation classes.
 """
+from collections import defaultdict, namedtuple
 from copy import copy
 import time
 
@@ -101,9 +102,27 @@ class Operation(object):
         else:
             raise TypeError("Date must be a <time.struct_time> type instance.")
 
+    def __eq__(self, other):
+        return self.done_km == other.done_km
+
+    def __ne__(self, other):
+        return self.done_km != other.done_km
+
+    def __lt__(self, other):
+        return self.done_km < other.done_km
+
+    def __le__(self, other):
+        return self.done_km <= other.done_km
+
+    def __gt__(self, other):
+        return self.done_km >= other.done_km
+
+    def __ge__(self, other):
+        return self.done_km > other.done_km
+
 
 # List of all available operations
-OPERATIONS_CATALOGUE = [
+PERIODICAL_OPERATIONS_CAT = [
     Operation("Changing the oil: engine", 1, 10000),
 ]
 # ToDo: import/export catalogue to human-readable txt-file.
@@ -115,28 +134,57 @@ class VehicleLogBook(object):
     Vehicle identified by text label and production date
 
     Example of using:
+    # Without periodical operations catalogue.
     >>> car = VehicleLogBook("Hyundai Getz", time.strptime("30-11-2006", "%d-%m-%Y"))
-    """
 
-    def __init__(self, label, production_date):
+    # Or with catalogue.
+    >>> car = VehicleLogBook(
+    ...     "Hyundai Getz",
+    ...     time.strptime("30-11-2006", "%d-%m-%Y"),
+    ...     PERIODICAL_OPERATIONS_CAT)
+    """
+    def __init__(self, label, production_date, operations_cat=tuple()):
+        """
+        :param label:            vehicle text identifier
+        :param production_date:  vehicle production date
+        :param operations_cat:   catalogue of all periodical operations types
+        """
         # Car label
         self.label = label
         # Car production date.
         if isinstance(production_date, time.struct_time):
-            self._prod_date = production_date
+            self._production_date = production_date
         else:
             raise TypeError("Argument <production_date> must be an instance of <time.struct_time> type.")
-        # List of all operations for keeping history.
+        # List of all done operations for keeping history.
         self._operations_log = list()
+        # Catalogue of all periodical operations types
+        self._operations_cat = dict()
+        for op in operations_cat:
+            if op.period_year == 0 and op.period_km == 0:
+                raise TypeError("Operation <{}> is not periodic.".format(op.label))
+            self._operations_cat[op.label] = op
 
-    def add_operation(self, operation):
+    def add_operation_to_log(self, operation):
         if not isinstance(operation, Operation):
             raise TypeError("Argument <operation> must be an instance of <Operation> type.")
-        # ToDO: Does I need to check operation state: is_done?
+        if not operation.is_done:
+            # It matter that operation has never been done.
+            raise ValueError("Operation date and haul (km) not specified.")
+        # Put operation to the log-list.
         self._operations_log.append(operation)
+        # If it is periodical operation
+        if operation.label in self._operations_cat:
+            # Update last completion time for this operation if that is newer than last.
+            operation_last = self._operations_cat[operation.label]
+            if operation > operation_last:
+                self._operations_cat[operation.label] = operation
+
+    # ToDo: method for edit log and cat. If added to cat, need to find this operation label in log and find the latest.
 
     def clear(self):
         self._operations_log.clear()
+        # ToDo: also reset to zero self._operations_cat dates (=None) and hauls (=0) of last done
 
     def next_maintenance(self, current_haul_km):
         # Return forecast about the next preventive maintenance.
