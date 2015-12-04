@@ -21,7 +21,6 @@ class Operation(object):
     >>> operation = oil_change.done(km=9842, date=time.localtime())
 
     """
-    # ToDo: write docstring with examples of using and date format
 
     def __init__(self, label, period_km, period_year):
         # Initialize default values.
@@ -111,9 +110,17 @@ OPERATIONS_CATALOGUE = [
 
 
 class VehicleLogBook(object):
-    # Represents storage of service operations
+    """ Represents storage of service operations for vehicle
 
-    def __init__(self, production_date):
+    Vehicle identified by text label and production date
+
+    Example of using:
+    >>> car = VehicleLogBook("Hyundai Getz", time.strptime("30-11-2006", "%d-%m-%Y"))
+    """
+
+    def __init__(self, label, production_date):
+        # Car label
+        self.label = label
         # Car production date.
         if isinstance(production_date, time.struct_time):
             self._prod_date = production_date
@@ -127,6 +134,9 @@ class VehicleLogBook(object):
             raise TypeError("Argument <operation> must be an instance of <Operation> type.")
         # ToDO: Does I need to check operation state: is_done?
         self._operations_log.append(operation)
+
+    def clear(self):
+        self._operations_log.clear()
 
     def next_maintenance(self, current_haul_km):
         # Return forecast about the next preventive maintenance.
