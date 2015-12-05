@@ -6,9 +6,15 @@ Application implementation classes.
 """
 from copy import copy
 from datetime import date, timedelta
+import gzip
+import pickle
 import re
+import warnings
 
 __author__ = 'Don D.S.'
+
+# Version of ServiceInterval.
+_VERSION = (1, 0)
 
 
 class Operation(object):
@@ -23,7 +29,7 @@ class Operation(object):
     # Create done-operation copy from current operation type.
     >>> oil_changed = oil_change.done(
     ...     km=9842,
-    ...     date=date.today(),
+    ...     date=date(2015, 12, 5),
     ...     comment="Price: 4000 RUR")
 
     # Create readable form.
@@ -186,7 +192,6 @@ class Operation(object):
             return "Operation({0}, period_km={1}, period_year={2})".format(
                 self.label, self.period_km, self.period_time.days/365)
 
-
     def __str__(self):
         """ !!! ATTENTION !!!
         If you change this method, you also need to change OperationList.load()
@@ -251,7 +256,7 @@ class OperationsList(list):
         # Create done-operation copy from current test operation type.
         >>> oil_changed = oil_change.done(
         ...     km=9842,
-        ...     date=date.today(),
+        ...     date=date(2015, 12, 5),
         ...     comment="Price: 4000 RUR")
 
         # Format for operation that has been done:
@@ -296,6 +301,8 @@ class OperationsList(list):
         is_done = False
         # Control line numbers
         nline_done_first = None
+        # Initialize storage
+        line_previous = ""
         with open(file, 'r') as fh:
             for num, line in enumerate(fh):
                 line = line.strip('\n')
@@ -329,7 +336,7 @@ class OperationsList(list):
                 match_done = re_done.search(line)
                 if match_done:
                     is_done = True
-                    done_at_km = float(match_done.group('km'))
+                    done_at_km = int(float(match_done.group('km')))
                     done_at_date = date(int(match_done.group('yyyy')),
                                         int(match_done.group('mm')),
                                         int(match_done.group('dd')))
@@ -349,7 +356,7 @@ class OperationsList(list):
                         period_month = float(match_period.group('time'))
                     else:
                         raise ValueError("Unable to parse line: \n" + line)
-                    period_km = float(match_period.group('km'))
+                    period_km = int(float(match_period.group('km')))
 
                     if not match_done:
                         label = line_previous
@@ -364,13 +371,6 @@ class OperationsList(list):
         return ops
 
 
-# List of all available operations
-PERIODICAL_OPERATIONS_CAT = [
-    Operation("Changing the oil: engine", 1, 10000),
-]
-# ToDo: import/export catalogue to human-readable txt-file.
-
-
 class VehicleLogBook(object):
     """ Represents storage of service operations for vehicle
 
@@ -383,10 +383,12 @@ class VehicleLogBook(object):
     ...     date(year=2006, month=11, day=30))
 
     # Or with catalogue.
+    >>> catalogue = OperationsList([
+    ...     Operation("Changing the oil: engine", 1, 10000),])
     >>> car = VehicleLogBook(
     ...     "Hyundai Getz",
     ...     date(year=2006, month=11, day=30),
-    ...     PERIODICAL_OPERATIONS_CAT)
+    ...     catalogue)
 
     # Add complete operation.
     # ...Prepare operation type.
@@ -397,7 +399,7 @@ class VehicleLogBook(object):
     # ...Prepare operation instance.
     >>> oil_changed = oil_change.done(
     ...     km=98042,
-    ...     date=date.today(),
+    ...     date=date(2015, 12, 5),
     ...     comment="Price: 4000 RUR")
 
     # ...Add operation to log.
@@ -418,7 +420,19 @@ class VehicleLogBook(object):
 
     >>> car.add_operation_to_cat(oil_change_gb)
 
+    # Serialize (save) class instance to file.
+    >>> car.save("doctest")
+
+    # Deserialize (load) class instance from file
+    >>> print(VehicleLogBook.load("doctest"))
+    [Operation(Changing the oil: engine, period_km=10000.0, period_year=1.0).done(km=98042.0, date=2015-12-05, comment=Price: 4000 RUR)]
+
     """
+    # Extension for files of class serialization
+    _extension = ".sin"
+    # Version identifier
+    _version = _VERSION
+
     def __init__(self, label, production_date, operations_cat=tuple()):
         """
         :param label:            vehicle text identifier
@@ -550,7 +564,55 @@ class VehicleLogBook(object):
         for op in ops:
             self.add_operation_to_cat(op)
 
-    # ToDo: serialize VehicleLogBook to file with the same name as label
+    def save(self, file=None):
+        """ Serialize current class instance.
+
+        Saving using pickle as compressed file
+        """
+        # Make filename correct.
+        if not file:
+            file = self.label
+            keepcharacters = (' ', '.', '_')
+            file = "".join(
+                c for c in file if c.isalnum() or c in keepcharacters).rstrip()
+        # Add extension (if missed).
+        if not file.endswith(VehicleLogBook._extension):
+            file += VehicleLogBook._extension
+        # Serialize.
+        with gzip.open(file, 'wb') as fh:
+            pickle.dump(self, fh, pickle.HIGHEST_PROTOCOL)
+
+    @staticmethod
+    def load(file):
+        """ Create class instance from previously saved instance.
+
+        Using pickle module.
+
+        Warning
+        -------
+        The pickle module is not secure against erroneous or maliciously
+        constructed data. Never unpickle data received from an untrusted or
+        unauthenticated source.
+        """
+        # Add extension (if missed).
+        if not file.endswith(VehicleLogBook._extension):
+            file += VehicleLogBook._extension
+        # Deserialize.
+        with gzip.open(file, 'rb') as fh:
+            vehice_log_book = pickle.load(fh)
+        # Check type.
+        if not isinstance(vehice_log_book, VehicleLogBook):
+            raise TypeError("File {0} has unexpected type: {1}".format(
+                file,
+                type(vehice_log_book)))
+        # Check version.
+        if vehice_log_book._version != VehicleLogBook._version:
+            warnings.warn("File {0} created by another version "
+                          "of class <VehicleLogBook>".format(file), Warning)
+        return vehice_log_book
+
+    def __str__(self):
+        return self._operations_log.__str__()
 
 
 if __name__ == "__main__":
