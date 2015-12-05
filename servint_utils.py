@@ -539,11 +539,16 @@ class VehicleLogBook(object):
         cat.save(file)
 
     def import_log(self, file):
-        self._operations_log.load(file)
+        # Import operations history from txt file.
+        ops = OperationsList.load(file)
+        for op in ops:
+            self.add_operation_to_log(op)
 
     def import_cat(self, file):
-        cat = OperationsList(self._operations_cat.values())
-        cat.load(file)
+        # Import periodic operations catalogue to txt file.
+        ops = OperationsList.load(file)
+        for op in ops:
+            self.add_operation_to_cat(op)
 
     # ToDo: serialize VehicleLogBook to file with the same name as label
 
