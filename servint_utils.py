@@ -438,7 +438,7 @@ class VehicleLogBook(object):
             raise TypeError("Argument <production_date> must be an instance "
                             "of <datetime.date> type.")
         # List of all done operations for keeping history.
-        self._operations_log = list()
+        self._operations_log = OperationsList()
         # Catalogue of all periodical operations types.
         # keys - operation labels; values - <Operation> class instances.
         self._operations_cat = dict()
@@ -527,7 +527,24 @@ class VehicleLogBook(object):
             plan.append(operation.done(plan_km, plan_date))
         return plan
 
-    # ToDo: create export function
+    def export_log(self, file):
+        # Export operations history to txt file.
+        self._operations_log.save(file)
+
+    def export_cat(self, file):
+        # Export periodic operations catalogue to txt file.
+        cat = self._operations_cat.values()
+        # Clear last operation info and convert it to <OperationsList> type.
+        cat = OperationsList([x.undo() for x in cat])
+        cat.save(file)
+
+    def import_log(self, file):
+        self._operations_log.load(file)
+
+    def import_cat(self, file):
+        cat = OperationsList(self._operations_cat.values())
+        cat.load(file)
+
     # ToDo: serialize VehicleLogBook to file with the same name as label
 
 
