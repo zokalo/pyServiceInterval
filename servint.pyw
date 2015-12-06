@@ -6,7 +6,11 @@ Main script.
 """
 __author__ = 'Don D.S.'
 
+import tkinter as tk
 from tk_gui import MainFrame
 
 if __name__ == "__main__":
-    MainFrame().mainloop()
+    root = tk.Tk()
+    app = MainFrame(master=root)
+    app.pack()
+    root.mainloop()
