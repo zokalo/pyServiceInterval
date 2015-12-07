@@ -8,7 +8,6 @@ import os
 from time import time
 import tkinter as tk
 from tkinter import ttk
-# import tkintertable as tktable
 # import servint_utils as si_utils
 
 # ToDo: Add context menu to edit tables
@@ -112,6 +111,7 @@ class MainFrame(tk.Frame):
                               underline=1)           # underline character
         self.bind_all("<Control-q>", self.act_quit)  # bind hotkey with action
         # ToDo: add 5 last files
+        # ToDo: edit menu with operations new/edit/delete/clear
         # Help
         menu_help = tk.Menu(self.menu, tearoff=0)
         self.menu.add_cascade(label="Help", menu=menu_help, underline=0)
@@ -166,37 +166,23 @@ class MainFrame(tk.Frame):
         #     adding Frames as pages for the ttk.Notebook
         #     first page, which would get widgets gridded into it
         tab_log = ttk.Frame(self.tabs)
+        # ToDo: add toolbar into the tab: add/edit/remove operation/clear + | + import/export/print
         # ToDo: Put tables into the tab
-        # However, you can use tktable, which is a wrapper around the Tcl/Tk TkTable widget, written by Guilherme Polo.
-        # https://github.com/gpolo
-        # http://sourceforge.net/projects/tktable/files/tktable/2.10/
-        # var = tktable.ArrayVar(tab_log)
-        # for y in range(-1, 4):
-        #     for x in range(-1, 4):
-        #         index = "%i,%i" % (y, x)
-        #         var.set(index, index)
-        # table = tktable.Table(F,
-        #     rows = 5,
-        #     cols = 5,
-        #     roworigin=-1,
-        #     colorigin=-1,
-        #     variable=var,
-        #     )
-        # table.pack(expand=1, fill='both')
+        # ToDo: context menu add/edit/remove/ + cut/copy/paste
+        self.table_log = Table(tab_log)
+        self.table_log.test()
+        self.table_log.pack(expand=1, fill="both")
+        # self.grid(sticky = (tk.N, tk.S, tk.W, tk.E))
+        # self.master.grid_rowconfigure(0, weight = 1)
+        # self.master.grid_columnconfigure(0, weight = 1)
 
-        # import tktable
-        #
-        # table = tktable.Table(parent,
-        #     rows = 5,
-        #     cols = 5
-        #     )
-        # table.pack()
         # 2) Tab Periodic Operations Catalogue
         tab_cat = ttk.Frame(self.tabs)
         # ... content example ...
         from tkinter.scrolledtext import ScrolledText
         text = ScrolledText(tab_cat)
         text.pack(expand=1, fill="both")
+
         # 3) Tab Maintenance plan
         tab_plan = ttk.Frame(self.tabs)
         # Push our tabs to tabs-widget
@@ -208,6 +194,7 @@ class MainFrame(tk.Frame):
         # Additional elements place here
         # ------------------------------
         # ...
+        # ToDo: status bar with tooltips
 
     def act_new(self, event=None):
         print('new')
@@ -380,3 +367,47 @@ class ToolTip(tk.Toplevel):
         """
         self.visible = 0
         self.withdraw()
+
+
+class Table(ttk.Treeview):
+    """ Table based on TreeView
+    """
+    def __init__(self, parent, headers=list(), widths=list(), **kwargs):
+        """
+        :param parent:
+        :param headers:  displayed text headers of the columns
+        :param widths:   columns widths
+        :param kwargs:   other keyword arguments for TreeView base class initialization
+        :return:
+        """
+        # ToDo: make unspecified width for stretchable column
+        ttk.Treeview.__init__(self, parent, **kwargs)
+        self._create_tree_view(headers)
+
+    def _create_tree_view(self, headers):
+        self['columns'] = ('starttime', 'endtime', 'status')  # self._var_name(headers)
+        self.heading("#0", text='Sources', anchor='w')
+        self.column("#0", anchor="w")
+        self.heading('starttime', text='Start Time')
+        self.column('starttime', anchor='center', width=100)
+        self.heading('endtime', text='End Time')
+        self.column('endtime', anchor='center', width=100)
+        self.heading('status', text='Status')
+        self.column('status', anchor='center', width=100)
+        # self.grid(sticky = (tk.N, tk.S, tk.W, tk.E))
+        # self.grid_rowconfigure(0, weight = 1)
+        # self.grid_columnconfigure(0, weight = 1)
+
+    @staticmethod
+    def _var_name(label):
+        """ Generate correct variable name from text label (or iterable array of labels)
+        """
+        if isinstance(label, str):
+            return "var_" + "".join(c for c in label if c.isalnum().rstrip())
+        elif hasattr(label, "__iter__ "):
+            labels = label
+            return (Table._var_name(label) for label in labels)
+
+    def test(self):
+        self.insert('', 'end', text="First", values=('10:00',
+                             '10:10', 'Ok'))

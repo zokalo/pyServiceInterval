@@ -17,6 +17,5 @@ TODO: Write usage instructions
 TODO: Write history
 ## Credits
 TODO: Write credits
-http://code.google.com/p/tkintertable/
 ## License
 GPL v3.0 License. See the LICENSE file.
