@@ -4,6 +4,7 @@
 ServiceInterval
 Application interface classes.
 """
+from collections import namedtuple
 import os
 from time import time
 import tkinter as tk
@@ -170,7 +171,7 @@ class MainFrame(tk.Frame):
         # ToDo: Put tables into the tab
         # ToDo: context menu add/edit/remove/ + cut/copy/paste
         self.table_log = Table(tab_log)
-        self.table_log.test()
+        # self.table_log.test()
         self.table_log.pack(expand=1, fill="both")
         # self.grid(sticky = (tk.N, tk.S, tk.W, tk.E))
         # self.master.grid_rowconfigure(0, weight = 1)
@@ -369,20 +370,53 @@ class ToolTip(tk.Toplevel):
         self.withdraw()
 
 
-class Table(ttk.Treeview):
+class Table(object):
     """ Table based on TreeView
+    >>> table = Table()
+
+    >>> table.set_col_headers()
     """
-    def __init__(self, parent, headers=list(), widths=list(), **kwargs):
+    def __init__(self, parent=None, headers=None, **kwargs):
         """
-        :param parent:
-        :param headers:  displayed text headers of the columns
-        :param widths:   columns widths
+        :param parent:   master widget for this TreeView-based table
+        :param headers:  dictionary of columns properties. Allowed the next keys*:
+                            text - column header text label
+                            [anchor] - align text {'w', 'e', 'center'}
+                            [width] - column width. Column with unspecified width will be stretched.
+        *[optional keywords]
         :param kwargs:   other keyword arguments for TreeView base class initialization
         :return:
         """
+        super().__init__()
+        # Declare / initialize fields
+        self._col_headers = headers if headers else dict()
+        self.tree = None
+        # Create GUI widgets
+        self._setup_widgets(parent)
+
         # ToDo: make unspecified width for stretchable column
-        ttk.Treeview.__init__(self, parent, **kwargs)
-        self._create_tree_view(headers)
+        # Editable rows:
+        # http://stackoverflow.com/questions/18562123/how-to-make-ttk-treeviews-rows-editable
+        # Same class example:
+        # https://www.daniweb.com/programming/software-development/threads/445871/multiple-treeviews-formatting-in-tkinter
+
+    def _setup_widgets(self, parent=None):
+        # Create a treeview
+        self.tree = ttk.Treeview(master=parent,
+                                 columns=self._col_headers,
+                                 show="headings")  # show={"tree headings"|"tree"|"headings"}
+
+    def pack(self, *args, **kwargs):
+        self.tree.pack(*args, **kwargs)
+
+    def set_col_headers(self):
+        if self.tree:
+            self.tree['columns'] = self._col_headers
+        else:
+            raise ValueError("Unable to build TreeView: widget is not created.")
+        for header in self._col_headers:
+            self.tree.heading("#0", text='Sources', anchor='w')
+        pass
 
     def _create_tree_view(self, headers):
         self['columns'] = ('starttime', 'endtime', 'status')  # self._var_name(headers)
@@ -394,20 +428,26 @@ class Table(ttk.Treeview):
         self.column('endtime', anchor='center', width=100)
         self.heading('status', text='Status')
         self.column('status', anchor='center', width=100)
-        # self.grid(sticky = (tk.N, tk.S, tk.W, tk.E))
-        # self.grid_rowconfigure(0, weight = 1)
-        # self.grid_columnconfigure(0, weight = 1)
 
-    @staticmethod
-    def _var_name(label):
-        """ Generate correct variable name from text label (or iterable array of labels)
-        """
-        if isinstance(label, str):
-            return "var_" + "".join(c for c in label if c.isalnum().rstrip())
-        elif hasattr(label, "__iter__ "):
-            labels = label
-            return (Table._var_name(label) for label in labels)
+    # def test(self):
+        # self.insert('', 'end', text="First", values=('10:00',
+        #                      '10:10', 'Ok'))
 
-    def test(self):
-        self.insert('', 'end', text="First", values=('10:00',
-                             '10:10', 'Ok'))
+
+def make_var_name(label):
+    """ Generate correct variable name from text label (or iterable array of labels)
+
+    >>> make_var_name("ji*((i_i")
+    'var_jii_i'
+    """
+    if isinstance(label, str):
+        return "var_" + "".join(c.lower() for c in label if c.isalnum())
+    elif hasattr(label, "__iter__ "):
+        labels = label
+        return (make_var_name(label) for label in labels)
+
+
+if __name__ == "__main__":
+    # Run doctests.
+    import doctest
+    doctest.testmod()
