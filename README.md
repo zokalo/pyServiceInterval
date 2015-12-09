@@ -17,6 +17,7 @@ TODO: Write usage instructions
 ## History
 TODO: Write history
 ## Credits
-TODO: Write credits
+ToolTip widget for Tkinter by Tucker Beck
+http://code.activestate.com/recipes/576688-tooltip-for-tkinter/
 ## License
 GPL v3.0 License. See the LICENSE file.
