@@ -4,7 +4,7 @@
 ServiceInterval
 Application interface classes.
 """
-from collections import namedtuple
+from collections import Iterable
 import os
 from time import time
 import tkinter as tk
@@ -168,9 +168,18 @@ class MainFrame(tk.Frame):
         #     first page, which would get widgets gridded into it
         tab_log = ttk.Frame(self.tabs)
         # ToDo: add toolbar into the tab: add/edit/remove operation/clear + | + import/export/print
-        # ToDo: Put tables into the tab
+        # collapse/expand all buttons,
+        # copy/paste/cut
         # ToDo: context menu add/edit/remove/ + cut/copy/paste
-        self.table_log = Table(tab_log)
+        self.table_log = Table(parent=tab_log,
+                               headers=["Date","Haul, km", "Operation"],
+                               widths=(100, 100, None),
+                               stretch=(0, 0, 1))
+        iid = self.table_log.insert(("42000", "09.12.2015", "Changing the oil: engine"))
+        self.table_log.insert(parent=iid, values=(
+            "", "", "Test operation record. "
+                    "Here can be placed some additional information: price, "
+                    "parts, comments..."))
         # self.table_log.test()
         self.table_log.pack(expand=1, fill="both")
         # self.grid(sticky = (tk.N, tk.S, tk.W, tk.E))
@@ -238,6 +247,7 @@ class MainFrame(tk.Frame):
 
     def act_quit(self, event=None):
         # sys.exit(0)
+        # ToDo: check unsaved
         self.master.quit()
 
     def dlg_help(self):
@@ -371,30 +381,53 @@ class ToolTip(tk.Toplevel):
 
 
 class Table(object):
-    """ Table based on TreeView
-    >>> table = Table()
+    """ Table widget for Tkinter.
+    Based on TreeView
 
-    >>> table.set_col_headers()
+    # Examples of unsing:
+    # Create table
+    >>> table = Table(headers=["Haul", "Date","Operation"],
+    ...               widths=(100, 100, None),
+    ...               stretch=(0, 0, 1),
+    ...               show_tree=True)
+
+    >>> table.pack(expand=1, fill="both")
+
+    # Add item to the table
+    >>> iid = table.insert(("42000", "19.10", "Oil change"))
+
+    # Add some subitems (comments)
+    >>> iid_sub = table.insert(parent=iid, values=("", "", "Oil change"))
+
+    >>> tk.mainloop()
     """
-    def __init__(self, parent=None, headers=None, **kwargs):
+    def __init__(self, headers,
+                 widths=None, stretch=None,  parent=None, show_tree=True,
+                 **kwargs):
         """
+        :param headers:  columns headers text labels vector
+        :param widths:   columns widths in pixels vector.
+                         Use None for unspecified width.
+        :param stretch:  Is column stretchable? True/False
         :param parent:   master widget for this TreeView-based table
-        :param headers:  dictionary of columns properties. Allowed the next keys*:
-                            text - column header text label
-                            [anchor] - align text {'w', 'e', 'center'}
-                            [width] - column width. Column with unspecified width will be stretched.
-        *[optional keywords]
+        :param show_tree: show if True (default) column with triangles for
+                         expanding items with subitems
         :param kwargs:   other keyword arguments for TreeView base class initialization
         :return:
         """
         super().__init__()
+        # tuple of default None values (for unspecified arguments)
+        tuple_none = tuple([None] * len(headers))
         # Declare / initialize fields
-        self._col_headers = headers if headers else dict()
+        self._col_headers = headers
+        self._col_names = make_var_name(headers)
+        self._col_widths = widths if widths else tuple_none
+        self._col_is_stretch = stretch if stretch else tuple_none
+        self._show_tree = show_tree
         self.tree = None
-        # Create GUI widgets
+        # Create GUI widget and setup columns
         self._setup_widgets(parent)
 
-        # ToDo: make unspecified width for stretchable column
         # Editable rows:
         # http://stackoverflow.com/questions/18562123/how-to-make-ttk-treeviews-rows-editable
         # Same class example:
@@ -402,52 +435,71 @@ class Table(object):
 
     def _setup_widgets(self, parent=None):
         # Create a treeview
-        self.tree = ttk.Treeview(master=parent,
-                                 columns=self._col_headers,
-                                 show="headings")  # show={"tree headings"|"tree"|"headings"}
+        if self._show_tree:
+            self.tree = ttk.Treeview(master=parent)
+            self.tree.column("#0", width=20, stretch=tk.NO)
+        else:
+            self.tree = ttk.Treeview(master=parent, show="headings")
+        # Create columns
+        self.tree['columns'] = self._col_names
+        # Setup column params
+        for i in range(0, len(self._col_headers)):
+            name = self._col_names[i]
+            header = self._col_headers[i]
+            width = self._col_widths[i]
+            stretch =self._col_is_stretch[i]
+            self.tree.heading(name, text=header)
+            if width:
+                self.tree.column(name, width=width)
+            self.tree.column(name, stretch=stretch)
 
     def pack(self, *args, **kwargs):
         self.tree.pack(*args, **kwargs)
 
-    def set_col_headers(self):
-        if self.tree:
-            self.tree['columns'] = self._col_headers
-        else:
-            raise ValueError("Unable to build TreeView: widget is not created.")
-        for header in self._col_headers:
-            self.tree.heading("#0", text='Sources', anchor='w')
-        pass
+    def insert(self, values, parent="", index="end", item_id=None):
+        """ Insert item
 
-    def _create_tree_view(self, headers):
-        self['columns'] = ('starttime', 'endtime', 'status')  # self._var_name(headers)
-        self.heading("#0", text='Sources', anchor='w')
-        self.column("#0", anchor="w")
-        self.heading('starttime', text='Start Time')
-        self.column('starttime', anchor='center', width=100)
-        self.heading('endtime', text='End Time')
-        self.column('endtime', anchor='center', width=100)
-        self.heading('status', text='Status')
-        self.column('status', anchor='center', width=100)
-
-    # def test(self):
-        # self.insert('', 'end', text="First", values=('10:00',
-        #                      '10:10', 'Ok'))
+        :param parent:  parent is the item ID of the parent item, or the empty
+                        string "" to create a new top-level item
+        :param index:   index is an integer, or the value "end",
+                        specifying where in the list of parent's children to
+                        insert the new item. If index is less than or equal to
+                        zero, the new node is inserted at the beginning, if
+                        index is greater than or equal to the current number of
+                        children, it is inserted at the end.
+        :param item_id: If iid is specified, it is used as the item identifier,
+                        iid must not already exist in the tree.
+                        Otherwise, a new unique identifier is generated.
+        :param values:  Column values.
+                        i.e. ("col1 value", "col2 value")
+        :return:        inserted item ID. Equal to item_id, if specified.
+                        (can be used to add child for this record)
+        """
+        # ToDo: make multiline subitems and other ?
+        return self.tree.insert(parent,
+                                index=index,
+                                iid=item_id,
+                                values=values)
 
 
 def make_var_name(label):
     """ Generate correct variable name from text label (or iterable array of labels)
 
-    >>> make_var_name("ji*((i_i")
-    'var_jii_i'
+    >>> make_var_name("Test text ji*((i_i")
+    'var_testtextjiii'
+
+    >>> make_var_name(['Haul', 'Date', 'Operation'])
+    ['var_haul', 'var_date', 'var_operation']
     """
     if isinstance(label, str):
         return "var_" + "".join(c.lower() for c in label if c.isalnum())
-    elif hasattr(label, "__iter__ "):
+    elif isinstance(label, Iterable):
         labels = label
-        return (make_var_name(label) for label in labels)
+        return [make_var_name(label) for label in labels]
 
 
 if __name__ == "__main__":
+    # table = Table(["Haul", "Date", "Operation"])
     # Run doctests.
     import doctest
     doctest.testmod()
