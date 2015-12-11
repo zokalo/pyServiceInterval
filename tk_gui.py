@@ -5,11 +5,12 @@ ServiceInterval
 Application interface classes.
 """
 from collections import Iterable
+from datetime import date
 import os
 from time import time
 import tkinter as tk
 from tkinter import ttk
-# import servint_utils as si_utils
+import servint_utils as siu
 
 # ToDo: Add context menu to edit tables
 # http://zetcode.com/gui/tkinter/menustoolbars/
@@ -19,6 +20,14 @@ __author__ = 'Don D.S.'
 # Private constants
 _DIR_IMG = 'icons'  # images directory
 
+# Test data
+oil_change = siu.Operation("Changing the oil: engine",
+                           period_km=10000,
+                           period_year=1)
+# Create done-operation copy from current operation type.
+oil_changed = oil_change.done(km=98421,
+                              date=date(2015, 12, 5),
+                              comment="Price: 4000 RUR")
 
 class MainFrame(tk.Frame):
     master_title = "Service Interval"
@@ -171,17 +180,11 @@ class MainFrame(tk.Frame):
         # collapse/expand all buttons,
         # copy/paste/cut
         # ToDo: context menu add/edit/remove/ + cut/copy/paste
-        self.table_log = Table(parent=tab_log,
-                               headers=["Date","Haul, km", "Operation"],
-                               widths=(100, 100, None),
-                               stretch=(0, 0, 1))
-        iid = self.table_log.insert(("42000", "09.12.2015", "Changing the oil: engine"))
-        self.table_log.insert(parent=iid, values=(
-            "", "", "Test operation record. "
-                    "Here can be placed some additional information: price, "
-                    "parts, comments..."))
-        # self.table_log.test()
+        self.table_log = OperationsTable(parent=tab_log)
         self.table_log.pack(expand=1, fill="both")
+        for i in range(10):
+            oil_changed.done_at_km = i
+            self.table_log.insert(oil_changed)
         # self.grid(sticky = (tk.N, tk.S, tk.W, tk.E))
         # self.master.grid_rowconfigure(0, weight = 1)
         # self.master.grid_columnconfigure(0, weight = 1)
@@ -452,6 +455,11 @@ class Table(object):
             if width:
                 self.tree.column(name, width=width)
             self.tree.column(name, stretch=stretch)
+        # Add vertical scrollbar
+        vsbar = tk.Scrollbar(self.tree)
+        vsbar.config(command=self.tree.yview)
+        self.tree.config(yscrollcommand=vsbar.set)
+        vsbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def pack(self, *args, **kwargs):
         self.tree.pack(*args, **kwargs)
@@ -480,6 +488,41 @@ class Table(object):
                                 index=index,
                                 iid=item_id,
                                 values=values)
+
+
+class OperationsTable(Table):
+    """ Operations table widget.
+    """
+
+    def __init__(self, parent):
+        super().__init__(headers=["Date", "Haul, km", "Operation"],
+                         parent=parent,
+                         widths=(100, 100, None),
+                         stretch=(0, 0, 1),
+                         show_tree=True)
+        ttk.Style().configure("Treeview",
+                              background="#d1c792",
+                              foreground="black")
+
+    def insert(self, operation):
+        # Check type
+        if not isinstance(operation, siu.Operation):
+            raise TypeError(
+                "Argument must have <class 'Operation'>, not " +
+                str(type(operation)))
+        # Check state
+        if not siu.Operation.is_done:
+            raise ValueError("Operation must be done for this widget."
+                             "Use Operation.done() method before.")
+        item = (operation.done_at_date, operation.done_at_km, operation.label)
+        iid = super().insert(item)
+        super().insert(parent=iid, values=("", "", operation.comment))
+
+
+class PeriodicOperationsTable():
+    """ Periodic operations table widget.
+    """
+    pass
 
 
 def make_var_name(label):

@@ -227,7 +227,7 @@ class OperationsList(list):
     Added save(), load() methods.
 
     Example of using:
-    >>> operations = OperationsList([
+    >>> operations = OperationsTable([
     ...     Operation("Changing the oil: engine", 1, 10000),
     ...     Operation("Changing the oil: gearbox", 3, 45000)])
 
@@ -265,20 +265,20 @@ class OperationsList(list):
         Changing the oil: engine
         Every 1.0 year(s) or 10000.0 km
         Price: 4000 RUR
-        >>> OperationsList([oil_changed]).save('doctest.txt')
+        >>> OperationsTable([oil_changed]).save('doctest.txt')
 
         # Doctest for reading and parsing operation that has been done:
-        >>> print(OperationsList.load('doctest.txt'))
+        >>> print(OperationsTable.load('doctest.txt'))
         [Operation(Changing the oil: engine, period_km=10000.0, period_year=1.0).done(km=9842.0, date=2015-12-05, comment=None)]
 
         # Format for operation that hasn't been done:
         >>> print(oil_change)
         Changing the oil: engine.
         Every 1.0 year(s) or 10000.0 km
-        >>> OperationsList([oil_change]).save('doctest.txt')
+        >>> OperationsTable([oil_change]).save('doctest.txt')
 
         # Doctest for reading and parsing operation that hasn't been done:
-        >>> print(OperationsList.load('doctest.txt'))
+        >>> print(OperationsTable.load('doctest.txt'))
         [Operation(Changing the oil: engine., period_km=10000.0, period_year=1.0)]
         """
         # Regular expression that can detect, that operation has been done
@@ -383,7 +383,7 @@ class VehicleLogBook(object):
     ...     date(year=2006, month=11, day=30))
 
     # Or with catalogue.
-    >>> catalogue = OperationsList([
+    >>> catalogue = OperationsTable([
     ...     Operation("Changing the oil: engine", 1, 10000),])
     >>> car = VehicleLogBook(
     ...     "Hyundai Getz",
@@ -548,7 +548,7 @@ class VehicleLogBook(object):
     def export_cat(self, file):
         # Export periodic operations catalogue to txt file.
         cat = self._operations_cat.values()
-        # Clear last operation info and convert it to <OperationsList> type.
+        # Clear last operation info and convert it to <OperationsTable> type.
         cat = OperationsList([x.undo() for x in cat])
         cat.save(file)
 
