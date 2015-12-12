@@ -6,6 +6,6 @@ $ sudo apt-get install python3-tk
 
 Add:
 import/export with selected encoding
-
+command pattern undo / redo
 Make:
 scrollbar in tables invisible if unused (while table is short)

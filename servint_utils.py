@@ -7,6 +7,7 @@ Application implementation classes.
 from copy import copy
 from datetime import date, timedelta
 import gzip
+import os
 import pickle
 import re
 import warnings
@@ -23,8 +24,8 @@ class Operation(object):
     Examples of using:
     # Create an operation type.
     >>> oil_change = Operation("Changing the oil: engine",
-    ...                        period_km=10000,
-    ...                        period_year=1)
+    ...                        interval_km=10000,
+    ...                        interval_year=1)
 
     # Create done-operation copy from current operation type.
     >>> oil_changed = oil_change.done(
@@ -44,25 +45,25 @@ class Operation(object):
 
     # Create representative form.
     >>> repr(oil_change)
-    'Operation(Changing the oil: engine, period_km=10000.0, period_year=1.0)'
+    'Operation(Changing the oil: engine, interval_km=10000.0, interval_year=1.0)'
 
     """
 
-    def __init__(self, label, period_km=0, period_year=0, period_month=0):
+    def __init__(self, label, interval_km=0, interval_year=0, interval_month=0):
         """ Create service operation type.
 
-        Default periods value is 0. It means that operation is non-periodic.
+        Default intervals value is 0. It means that operation is non-periodic.
 
-        :param label:        operation label or description
-        :param period_km:    operation period by vehicle haul, km
-        :param period_year:  operation period time, years
-        :param period_month:  operation period time, months
+        :param label:          operation label or description
+        :param interval_km:    operation interval by vehicle haul, km
+        :param interval_year:  operation interval time, years
+        :param interval_month: operation interval time, months
         """
         super().__init__()
         # Initialize default values.
         self._label = ""
-        self._period_time = timedelta()
-        self._period_km = 0
+        self._interval_time = timedelta()
+        self._interval_km = 0
         # For done copy of this operation type.
         self._done_at_km = 0
         self._done_at_date = None
@@ -72,9 +73,9 @@ class Operation(object):
         self._is_done = False   # default operation state: not done.
         # Set up values for current operation instance.
         self.label = label
-        self.period_time = timedelta(
-            days=365 * period_year + 30.4 * period_month)
-        self.period_km = period_km
+        self.interval_time = timedelta(
+            days=365 * interval_year + 30.4 * interval_month)
+        self.interval_km = interval_km
 
     def done(self, km=0, date=None, comment=""):
         # Create a copy of this operation, that has been done and return it.
@@ -98,6 +99,10 @@ class Operation(object):
         return self._is_done
 
     @property
+    def is_periodic(self):
+        return self.interval_km != 0
+
+    @property
     def label(self):
         return self._label
 
@@ -109,30 +114,30 @@ class Operation(object):
             raise TypeError("OperationType title must be a text string.")
 
     @property
-    def period_time(self):
-        return self._period_time
+    def interval_time(self):
+        return self._interval_time
 
-    @period_time.setter
-    def period_time(self, period):
-        if not isinstance(period, timedelta):
+    @interval_time.setter
+    def interval_time(self, interval):
+        if not isinstance(interval, timedelta):
             raise TypeError("Time must be represented as <datetime.timedelta>"
                             " class instance.")
-        self._period_time = period
+        self._interval_time = interval
 
     @property
-    def period_km(self):
-        return self._period_km
+    def interval_km(self):
+        return self._interval_km
 
-    @period_km.setter
-    def period_km(self, new_period):
+    @interval_km.setter
+    def interval_km(self, new_interval):
         try:
-            new_period = float(new_period)
+            new_interval = float(new_interval)
         except ValueError:
-            raise TypeError("Period must be a numeric type or string number.")
-        if new_period < 0:
-            raise ValueError("Operation period must be positive. "
-                             "Received value " + str(new_period))
-        self._period_km = new_period
+            raise TypeError("Interval must be a numeric type or string number.")
+        if new_interval < 0:
+            raise ValueError("Operation interval must be positive. "
+                             "Received value " + str(new_interval))
+        self._interval_km = new_interval
 
     @property
     def done_at_km(self):
@@ -184,20 +189,20 @@ class Operation(object):
 
     def __repr__(self):
         if self.is_done:
-            return "Operation({0}, period_km={1}, period_year={2}).done("\
+            return "Operation({0}, interval_km={1}, interval_year={2}).done("\
                    "km={3}, date={4}, comment={5})".format(
-                       self.label, self.period_km, self.period_time.days/365,
+                       self.label, self.interval_km, self.interval_time.days/365,
                        self.done_at_km, self.done_at_date, self.comment)
         else:
-            return "Operation({0}, period_km={1}, period_year={2})".format(
-                self.label, self.period_km, self.period_time.days/365)
+            return "Operation({0}, interval_km={1}, interval_year={2})".format(
+                self.label, self.interval_km, self.interval_time.days/365)
 
     def __str__(self):
         """ !!! ATTENTION !!!
         If you change this method, you also need to change OperationList.load()
         parsing method. This is bad idea.
         """
-        period_months = round(self.period_time.days/(365/12))
+        interval_months = round(self.interval_time.days/(365/12))
 
         if self.is_done:
             return "{date} / {km} km\n" \
@@ -209,17 +214,17 @@ class Operation(object):
                        km=self.done_at_km,
                        comment=self.comment,
                        prd_time=
-                       str(period_months) + " month(s)" if period_months < 12
-                       else str(round(period_months/12, 1)) + " year(s)",
-                       prd_km=self.period_km)
+                       str(interval_months) + " month(s)" if interval_months < 12
+                       else str(round(interval_months/12, 1)) + " year(s)",
+                       prd_km=self.interval_km)
         else:
 
             return "{label}.\nEvery {prd_time} or {prd_km} km".format(
                 label=self.label,
-                prd_time=str(period_months) + " month(s)" if period_months < 12
+                prd_time=str(interval_months) + " month(s)" if interval_months < 12
                 else
-                str(round(period_months/12, 1)) + " year(s)",
-                prd_km=self.period_km)
+                str(round(interval_months/12, 1)) + " year(s)",
+                prd_km=self.interval_km)
 
 
 class OperationsList(list):
@@ -250,8 +255,8 @@ class OperationsList(list):
 
         # Create test operation type.
         >>> oil_change = Operation("Changing the oil: engine",
-        ...                        period_km=10000,
-        ...                        period_year=1)
+        ...                        interval_km=10000,
+        ...                        interval_year=1)
 
         # Create done-operation copy from current test operation type.
         >>> oil_changed = oil_change.done(
@@ -269,7 +274,7 @@ class OperationsList(list):
 
         # Doctest for reading and parsing operation that has been done:
         >>> print(OperationsList.load('doctest.txt'))
-        [Operation(Changing the oil: engine, period_km=10000.0, period_year=1.0).done(km=9842.0, date=2015-12-05, comment=None)]
+        [Operation(Changing the oil: engine, interval_km=10000.0, interval_year=1.0).done(km=9842.0, date=2015-12-05, comment=None)]
 
         # Format for operation that hasn't been done:
         >>> print(oil_change)
@@ -279,21 +284,21 @@ class OperationsList(list):
 
         # Doctest for reading and parsing operation that hasn't been done:
         >>> print(OperationsList.load('doctest.txt'))
-        [Operation(Changing the oil: engine., period_km=10000.0, period_year=1.0)]
+        [Operation(Changing the oil: engine., interval_km=10000.0, interval_year=1.0)]
         """
         # Regular expression that can detect, that operation has been done
         re_done = re.compile(
             r"(?P<yyyy>[0-9]{4})-(?P<mm>[0-9]{2})-(?P<dd>[0-9]{2})\s/\s(?P<km>[0-9.]+)\skm")
-        # Regular expression that can detect operation periods line
-        re_period = re.compile(
+        # Regular expression that can detect operation intervals line
+        re_interval = re.compile(
             r"Every\s(?P<time>[0-9.]+)\s(?P<year_or_mon>[a-z()]+)\sor\s(?P<km>[0-9.]+)\skm")
         # Output variable
         ops = OperationsList()
         # Operation arguments
         label = None
-        period_km = None
-        period_year = None
-        period_month = None
+        interval_km = None
+        interval_year = None
+        interval_month = None
         done_at_km = None
         done_at_date = None
         comment = None
@@ -311,9 +316,9 @@ class OperationsList(list):
                     # ...append previous operation to list (if exist)
                     if label:  # (check by label - it is necessary argument)
                         op = Operation(label,
-                                       period_km,
-                                       period_year,
-                                       period_month)
+                                       interval_km,
+                                       interval_year,
+                                       interval_month)
                         if is_done:
                             op = op.done(done_at_km,
                                          done_at_date,
@@ -322,9 +327,9 @@ class OperationsList(list):
                     # ... and reset operation args, flag, nlines - anyway
                     # Operation arguments
                     label = None
-                    period_km = None
-                    period_year = None
-                    period_month = None
+                    interval_km = None
+                    interval_year = None
+                    interval_month = None
                     done_at_km = None
                     done_at_date = None
                     comment = None
@@ -344,24 +349,24 @@ class OperationsList(list):
                 # Next line after match_done line - is label
                 if match_done and num - 1 == nline_done_first:
                     label = line
-                # Check for periods line
-                match_period = re_period.search(line)
-                if match_period:
-                    year_or_mon = match_period.group('year_or_mon')
+                # Check for intervals line
+                match_interval = re_interval.search(line)
+                if match_interval:
+                    year_or_mon = match_interval.group('year_or_mon')
                     if year_or_mon == "year(s)":
-                        period_year = float(match_period.group('time'))
-                        period_month = 0
+                        interval_year = float(match_interval.group('time'))
+                        interval_month = 0
                     elif year_or_mon == "month(s)":
-                        period_year = 0
-                        period_month = float(match_period.group('time'))
+                        interval_year = 0
+                        interval_month = float(match_interval.group('time'))
                     else:
                         raise ValueError("Unable to parse line: \n" + line)
-                    period_km = int(float(match_period.group('km')))
+                    interval_km = int(float(match_interval.group('km')))
 
                     if not match_done:
                         label = line_previous
-                # Next line after label - is periods. Already parsed.
-                # Next line after periods - is comment
+                # Next line after label - is intervals. Already parsed.
+                # Next line after intervals - is comment
                 if match_done and num - 3 == nline_done_first:
                     comment = line
                 # Keep previous line. We can detect operation that hasn't been
@@ -375,6 +380,9 @@ class VehicleLogBook(object):
     """ Represents storage of service operations for vehicle
 
     Vehicle identified by text label and production date
+
+    WARNING!!! If you add some methods, do not forget to update
+    self._changed field, that shows that object contains unsaved changes!
 
     Examples of using:
     # Without periodical operations catalogue.
@@ -393,8 +401,8 @@ class VehicleLogBook(object):
     # Add complete operation.
     # ...Prepare operation type.
     >>> oil_change = Operation("Changing the oil: engine",
-    ...                        period_km=10000,
-    ...                        period_year=1)
+    ...                        interval_km=10000,
+    ...                        interval_year=1)
 
     # ...Prepare operation instance.
     >>> oil_changed = oil_change.done(
@@ -407,7 +415,7 @@ class VehicleLogBook(object):
 
     # Make maintenance plan.
     >>> car.make_maintenance_plan()
-    [Operation(Changing the oil: engine, period_km=10000.0, period_year=1.0).done(km=108042.0, date=2016-12-04, comment=)]
+    [Operation(Changing the oil: engine, interval_km=10000.0, interval_year=1.0).done(km=108042.0, date=2016-12-04, comment=)]
 
     # Add new periodic operation to catalogue.
     # ...already exist in catalogue
@@ -415,8 +423,8 @@ class VehicleLogBook(object):
 
     # ...new operation
     >>> oil_change_gb = Operation("Changing the oil: gearbox",
-    ...                        period_km=45000,
-    ...                        period_year=3)
+    ...                        interval_km=45000,
+    ...                        interval_year=3)
 
     >>> car.add_operation_to_cat(oil_change_gb)
 
@@ -425,11 +433,11 @@ class VehicleLogBook(object):
 
     # Deserialize (load) class instance from file
     >>> print(VehicleLogBook.load("doctest"))
-    [Operation(Changing the oil: engine, period_km=10000.0, period_year=1.0).done(km=98042.0, date=2015-12-05, comment=Price: 4000 RUR)]
+    [Operation(Changing the oil: engine, interval_km=10000.0, interval_year=1.0).done(km=98042.0, date=2015-12-05, comment=Price: 4000 RUR)]
 
     """
     # Extension for files of class serialization
-    _extension = ".sin"
+    _extension = ".sif"
     # Version identifier
     _version = _VERSION
 
@@ -443,26 +451,63 @@ class VehicleLogBook(object):
                                  class)
         """
         super().__init__()
+        self._production_date = None
+        self._filename = ""  # filename where object saved
         # Car label
-        self.label = label
-        # Car production date.
-        if isinstance(production_date, date):
-            self._production_date = production_date
-        else:
-            raise TypeError("Argument <production_date> must be an instance "
-                            "of <datetime.date> type.")
+        self._label = label
+        self.production_date = production_date
         # List of all done operations for keeping history.
         self._operations_log = OperationsList()
         # Catalogue of all periodical operations types.
         # keys - operation labels; values - <Operation> class instances.
         self._operations_cat = dict()
         for op in operations_cat:
-            if op.period_time == 0 and op.period_km == 0:
+            if op.interval_time == 0 and op.interval_km == 0:
                 raise TypeError(
                     "Operation <{}> is not periodic.".format(op.label) +
                     "\nUnable to add non-periodic operation to the catalogue "
                     "of periodic operations.")
             self._operations_cat[op.label] = op
+        self._modified = False  # WARNING!!! False in spite of assignation
+        # label and production_date during call __init___(). Becomes True after
+        # assignment this fields through properties.
+
+    @property
+    def extension(self):
+        return self._extension
+
+    @property
+    def filename(self):
+        return self._filename
+
+    @property
+    def is_modified(self):
+        return self._modified
+
+    @property
+    def label(self):
+        return self._label
+
+    @label.setter
+    def label(self, new_label):
+        if self._label != new_label:
+            self._modified = True
+            self._label = new_label
+
+    @property
+    def production_date(self):
+        return self._production_date
+
+    @production_date.setter
+    def production_date(self, new_prod_date):
+        # Car production date.
+        if isinstance(new_prod_date, date):
+            if new_prod_date != self._production_date:
+                self._modified = True
+                self._production_date = new_prod_date
+        else:
+            raise TypeError("Argument <new_prod_date> must be an instance "
+                            "of <datetime.date> type.")
 
     def add_operation_to_log(self, operation):
         if not isinstance(operation, Operation):
@@ -473,6 +518,7 @@ class VehicleLogBook(object):
             raise ValueError("Operation date and haul not specified. "
                              "Unable to add operation that has never been "
                              "done.")
+        self._modified = True
         # Put operation to the log-list.
         self._operations_log.append(operation)
         # If it is periodical operation
@@ -485,6 +531,7 @@ class VehicleLogBook(object):
 
     def add_operation_to_cat(self, operation):
         if operation not in self._operations_cat.values():
+            self._modified = True
             # Default operation last completion date/haul
             last_date = self._production_date
             last_km = 0
@@ -501,6 +548,7 @@ class VehicleLogBook(object):
             self._operations_cat[operation.label] = operation
 
     def clear_log(self):
+        self._modified = True
         # Clear log of produced operations.
         self._operations_log.clear()
         # Clear information about last operation completion
@@ -508,6 +556,7 @@ class VehicleLogBook(object):
             operation.undo()
 
     def clear_all(self):
+        self._modified = True
         # Clear operations log and peridic operations catalogue.
         self._operations_log.clear()
         self._operations_cat.clear()
@@ -527,13 +576,13 @@ class VehicleLogBook(object):
         for operation in self._operations_cat.values():
             # Planned operation date.
             last_date = operation.done_at_date
-            period_date = operation.period_time
-            plan_date = last_date + period_date
+            interval_date = operation.interval_time
+            plan_date = last_date + interval_date
 
             # Planned operation haul.
             last_km = operation.done_at_km
-            period_km = operation.period_km
-            plan_km = last_km + period_km
+            interval_km = operation.interval_km
+            plan_km = last_km + interval_km
 
             # Make planned operation haul relative to current.
             if haul:
@@ -553,12 +602,14 @@ class VehicleLogBook(object):
         cat.save(file)
 
     def import_log(self, file):
+        self._modified = True
         # Import operations history from txt file.
         ops = OperationsList.load(file)
         for op in ops:
             self.add_operation_to_log(op)
 
     def import_cat(self, file):
+        self._modified = True
         # Import periodic operations catalogue to txt file.
         ops = OperationsList.load(file)
         for op in ops:
@@ -570,17 +621,19 @@ class VehicleLogBook(object):
         Saving using pickle as compressed file
         """
         # Make filename correct.
-        if not file:
-            file = self.label
-            keepcharacters = (' ', '.', '_')
-            file = "".join(
-                c for c in file if c.isalnum() or c in keepcharacters).rstrip()
+        if not file and not self._filename:
+            raise ValueError("File name argument missed.")
+        elif not file:
+            file = self._filename
         # Add extension (if missed).
-        if not file.endswith(VehicleLogBook._extension):
+        ext = os.path.splitext(file)[-1]
+        if not ext:
             file += VehicleLogBook._extension
         # Serialize.
         with gzip.open(file, 'wb') as fh:
             pickle.dump(self, fh, pickle.HIGHEST_PROTOCOL)
+        self._modified = False
+        self._filename = file
 
     @staticmethod
     def load(file):
@@ -595,11 +648,13 @@ class VehicleLogBook(object):
         unauthenticated source.
         """
         # Add extension (if missed).
-        if not file.endswith(VehicleLogBook._extension):
+        ext = os.path.splitext(file)[-1]
+        if not ext:
             file += VehicleLogBook._extension
         # Deserialize.
         with gzip.open(file, 'rb') as fh:
             vehice_log_book = pickle.load(fh)
+        vehice_log_book._changed = False
         # Check type.
         if not isinstance(vehice_log_book, VehicleLogBook):
             raise TypeError("File {0} has unexpected type: {1}".format(
