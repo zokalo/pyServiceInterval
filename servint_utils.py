@@ -7,6 +7,7 @@ Application implementation classes.
 from copy import copy
 from datetime import date, timedelta
 import gzip
+from numbers import Number
 import os
 import pickle
 import re
@@ -456,6 +457,8 @@ class VehicleLogBook(object):
         # Car label
         self._label = label
         self.production_date = production_date
+        # Car haul today
+        self._haul = 0
         # List of all done operations for keeping history.
         self._operations_log = OperationsList()
         # Catalogue of all periodical operations types.
@@ -471,6 +474,21 @@ class VehicleLogBook(object):
         self._modified = False  # WARNING!!! False in spite of assignation
         # label and production_date during call __init___(). Becomes True after
         # assignment this fields through properties.
+
+    @property
+    def haul(self):
+        return self._haul
+
+    @haul.setter
+    def haul(self, new_haul):
+        if isinstance(new_haul, str) and new_haul.isdigit():
+            new_haul = float(new_haul)
+        if isinstance(new_haul, Number):
+            self._haul = new_haul
+            self._modified = True
+        else:
+            raise TypeError(
+                "Haul value must be a Number (int, float, ...) or digit-string")
 
     @property
     def extension(self):
@@ -518,6 +536,18 @@ class VehicleLogBook(object):
         labels = labels.union([x for x in self._operations_cat.keys()])
         return labels
 
+    def get_periodic(self, label):
+        """ Find periodic operation with the same label in periodic
+        operations catalogue
+
+        :param label:  String of operation label
+        :return:       Operation instance or None (if no same label)
+        """
+        if label in self._operations_cat:
+            return self._operations_cat[label]
+        else:
+            return None
+
     def add_operation_to_log(self, operation):
         if not isinstance(operation, Operation):
             raise TypeError("Argument <operation> must be an instance "
@@ -531,12 +561,16 @@ class VehicleLogBook(object):
         # Put operation to the log-list.
         self._operations_log.append(operation)
         # If it is periodical operation
-        if operation.label in self._operations_cat:
-            # Update last completion time for this operation
-            # if that is newer than last.
-            operation_last = self._operations_cat[operation.label]
-            if operation > operation_last:
-                self._operations_cat[operation.label] = operation
+        if operation.is_periodic:
+            if operation.label in self._operations_cat:
+                # Update last completion time for this operation
+                # if that is newer than last.
+                operation_last = self._operations_cat[operation.label]
+                if operation > operation_last:
+                    self._operations_cat[operation.label] = operation
+            else:
+                # Add operation to periodic operations catalogue
+                self.add_operation_to_cat(operation)
 
     def add_operation_to_cat(self, operation):
         if operation not in self._operations_cat.values():
@@ -570,18 +604,20 @@ class VehicleLogBook(object):
         self._operations_log.clear()
         self._operations_cat.clear()
 
-    def make_maintenance_plan(self, haul=None):
+    def make_maintenance_plan(self, haul=None, relative=True):
         """ Make plan of periodic operations that must be performed.
 
-        If current haul is specified, function returns the plan with operations
-        planned with haul relative to current.
-        Otherwise - with absolute haul values.
-
-        :param haul:  (unnecessary) current vehicle haul, km.
+        :param haul:  current vehicle haul, km. If you specify it here, than
+                      this value will be saved in class property <haul>
+        :param relative: If True, than the plan with operations planned with
+                         haul relative to current.
+                         Otherwise - with absolute haul values
         :return:  list of operations, that represents plan of periodic
                   operations that must be performed.
         """
         plan = list()
+        if haul:
+            self.haul = haul
         for operation in self._operations_cat.values():
             # Planned operation date.
             last_date = operation.done_at_date
@@ -594,8 +630,8 @@ class VehicleLogBook(object):
             plan_km = last_km + interval_km
 
             # Make planned operation haul relative to current.
-            if haul:
-                plan_km -= haul
+            if relative:
+                plan_km -= self.haul
             plan.append(operation.done(plan_km, plan_date))
         return plan
 

@@ -6,6 +6,7 @@ Application interface classes.
 """
 from collections import Iterable
 from datetime import date, datetime, timedelta
+from numbers import Number
 import os
 from time import time
 import tkinter as tk
@@ -37,11 +38,7 @@ class MainFrame(tk.Frame):
     tooltip_delay = 0.5
 
     def __init__(self, master=None, **options):
-        tk.Frame.__init__(self, master, **options)
-
-        # Initialize document
-        self._doc = None  # Create class field
-        self.log_new()    # Initialize field
+        super().__init__(master, **options)
 
         # Create images
         #   Where I can find icons:
@@ -60,7 +57,6 @@ class MainFrame(tk.Frame):
 
         # Setup master window
         # -------------------
-        self.update_title()
         self.master.minsize(width=640, height=480)
         self._center()
 
@@ -252,21 +248,15 @@ class MainFrame(tk.Frame):
         # ... content
         self.table_log = OperationsTable(parent=tab_log)
         self.table_log.pack(expand=1, fill="both")
-        # TEST DATA
-        for i in range(10):
-            oil_changed.done_at_km = i
-            self.table_log.insert(oil_changed)
-            self.doc.add_operation_to_log(oil_changed)
         # 2) Tab Periodic Operations Catalogue
         tab_cat = ttk.Frame(self.tabs)
         # ... content
         self.table_cat = PeriodicOperationsTable(parent=tab_cat)
         self.table_cat.pack(expand=1, fill="both")
-        # TEST DATA
-        self.table_cat.insert(oil_change)
         # 3) Tab Maintenance plan
         tab_plan = ttk.Frame(self.tabs)
         # ... content
+        # ToDo: Add haul panel and switcher to absolute / relative
         self.table_plan = MaintenancePlanTable(parent=tab_plan)
         self.table_plan.pack(expand=1, fill="both")
         # Push our tabs to tabs-widget
@@ -280,13 +270,16 @@ class MainFrame(tk.Frame):
         # ...
         # ToDo: status bar with tooltips
 
+        # Document
+        self._doc = None  # Create field for document
+        self.log_new()    # Initialize document
+
     @property
     def doc(self):
         return self._doc
 
     @doc.setter
     def doc(self, new_doc):
-        print('Tables must be cleared!')
         self._doc = new_doc
         self.update_title()
 
@@ -322,7 +315,10 @@ class MainFrame(tk.Frame):
             not_cancelled = True  # anyway
         if not_cancelled:
             self.doc = TkVehicleLogBook(label="New Vehicle",
-                                        production_date=date.today())
+                                        production_date=date.today(),
+                                        tab_log=self.table_log,
+                                        tab_cat=self.table_cat,
+                                        tab_plan=self.table_plan)
 
     def log_open(self, event=None):
         not_cancelled = self.ask_save()
@@ -405,10 +401,21 @@ class MainFrame(tk.Frame):
 
     def operation_add(self, event=None):
         AddOperationWindow(master=self, vehicle=self.doc)
-        print('operation_add')
 
     def operation_edit(self, event=None):
-        print('operation_edit')
+        # ToDo: get active tab and get selected item:
+        # item = self.tree.selection()[0]
+        operation = None
+        if operation:
+            AddOperationWindow(master=self,
+                               vehicle=self.doc,
+                               operation=operation)
+        else:
+            tk.messagebox.showwarning(
+                parent=self.master,
+                title="Edit item warning",
+                message="No selected item in active tab to edit ",
+                detail="Select item and retry.")
 
     def operation_delete(self, event=None):
         print('operation_delete')
@@ -451,7 +458,7 @@ class VehicleSetupWindow(tk.Toplevel):
 
         # Add widgets
         # -----------
-        # Container 1
+        # Container 1: LABEL
         # -----------
         frame = tk.Frame(master=self, bd=10)
         frame.pack(fill=tk.X)
@@ -465,15 +472,10 @@ class VehicleSetupWindow(tk.Toplevel):
         self.txt_label.insert(0, self.vehicle.label)
         self.txt_label.pack(side=tk.TOP, fill=tk.X)
 
-        # Container 2
+        # Container 2: PRODUCED
         # -----------
         frame = tk.Frame(master=self, bd=10)
-        frame.pack(fill=tk.X)
-        # Label "Enter vehicle production date (YYYY-MM-DD):"
-        lbl_prod = tk.Label(master=frame,
-                            text="Enter vehicle production date (YYYY-MM-DD or YYYY.MM.DD):",
-                            anchor=tk.W, justify=tk.LEFT)
-        lbl_prod.pack(side=tk.TOP, fill=tk.X)
+        frame.pack(side=tk.TOP, fill=tk.X)
         # Entry Vehicle production date
         vcmd = (self.register(date_validate),
                 '%i', '%P', '%S')
@@ -490,10 +492,30 @@ class VehicleSetupWindow(tk.Toplevel):
         self.txt_date = tk.Entry(master=frame,
                                  validate="key", validatecommand=vcmd)
         self.txt_date.insert(0, self.vehicle.production_date)
-        self.txt_date.pack(side=tk.TOP, fill=tk.X)
+        self.txt_date.pack(side=tk.RIGHT)
+        # Label "Enter vehicle production date (YYYY-MM-DD):"
+        lbl_prod = tk.Label(master=frame,
+                            text="Enter vehicle production date (YYYY-MM-DD):",
+                            anchor=tk.E, justify=tk.RIGHT)
+        lbl_prod.pack(side=tk.RIGHT)
         # ToDo: Add calendar widget
 
-        # Container 2
+        # Container 2: HAUL
+        # -----------
+        frame = tk.Frame(master=self, bd=10)
+        frame.pack(side=tk.TOP, fill=tk.X)
+        # Entry Vehicle production date
+        vcmd_num = (self.register(num_validate), '%S')
+        self.txt_haul = tk.Entry(master=frame,
+                                 validate="key", validatecommand=vcmd_num)
+        self.txt_haul.insert(0, self.vehicle.haul)
+        self.txt_haul.pack(side=tk.RIGHT)
+        lbl_haul = tk.Label(master=frame,
+                            text="Vehicle haul for today, km:",
+                            anchor=tk.E, justify=tk.RIGHT)
+        lbl_haul.pack(side=tk.RIGHT)
+
+        # Container 3: BUTTONS
         # -----------
         frame = tk.Frame(master=self, bd=10)
         frame.pack(side=tk.BOTTOM)
@@ -522,9 +544,11 @@ class VehicleSetupWindow(tk.Toplevel):
     def btn_ok(self, event=None):
         new_date = self.txt_date.get()
         new_label = self.txt_label.get()
+        new_haul = self.txt_haul.get()
         try:
             new_date = new_date.replace('.', '-')
             new_date = datetime.strptime(new_date, '%Y-%m-%d').date()
+            new_haul = float(new_haul)
         except ValueError:
             tk.messagebox.showerror(parent=self,
                                     title="Error",
@@ -535,6 +559,7 @@ class VehicleSetupWindow(tk.Toplevel):
         else:
             self.vehicle.label = new_label
             self.vehicle.production_date = new_date
+            self.vehicle.haul = new_haul
             self.destroy()
 
 
@@ -785,6 +810,11 @@ class Table(object):
                                 iid=item_id,
                                 values=values)
 
+    def clear(self):
+        # Remove all items from Table
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+
 
 class OperationsTable(Table):
     """ Operations table widget.
@@ -884,6 +914,8 @@ class AddOperationWindow(tk.Toplevel):
     """  Modal window for adding/editing operation
     """
     new_op_label = "New operation"
+    title_edit = "Edit operation"
+    title_new = "Add new operation"
 
     def __init__(self, vehicle, master=None, operation=None, **options):
 
@@ -893,22 +925,28 @@ class AddOperationWindow(tk.Toplevel):
         self.vehicle = vehicle
         if not operation:
             operation = siu.Operation(self.new_op_label)
-            self.window_title = "Add new operation"
+            self.window_title = self.title_new
             self.operation_action = self.operation_new
+            self.mode_new = True
+            self.mode_edit = False
         else:
-            self.window_title = "Edit operation"
+            self.window_title = self.title_edit
             self.operation_action = self.operation_edit
+            self.mode_new = False
+            self.mode_edit = True
         # Operation object
         self.operation = operation
         # Selected operation label
         self.op_label = tk.StringVar()
         self.op_label.set(self.operation.label)
         # All known operation labels
-        # First position allow to enter new operation label
-        self.op_list = self.vehicle.get_all_oper_labels()
-        self.op_list = list(self.op_list)
-        # If we create new operation
-        if self.operation.label == self.new_op_label:
+        if self.mode_edit:
+            # Select another label forbidden. Only edit.
+            self.op_list = [self.operation.label]
+        else: # mode_new
+            # First position allow to enter new operation label
+            self.op_list = self.vehicle.get_all_oper_labels()
+            self.op_list = list(self.op_list)
             if self.new_op_label in self.op_list:
                 # delete current operation label...
                 self.op_list.remove(self.new_op_label)
@@ -928,11 +966,15 @@ class AddOperationWindow(tk.Toplevel):
         self.is_done.set(self.operation.is_done)
         # Done date/km
         self.done_date = tk.StringVar()
-        self.done_date.set(str(self.operation.done_at_date))
         self.done_km = tk.StringVar()
-        self.done_km.set(self.operation.done_at_km)
+        if self.operation.is_done:
+            self.done_date.set(str(self.operation.done_at_date))
+            self.done_km.set(self.operation.done_at_km)
+        else:
+            self.done_date.set(str(date.today()))
+            self.done_km.set(self.vehicle.haul)
         # Comment
-        # Comment must be fetched from comment text widget using get()method
+        # Comment must be fetched from comment text widget using get() method
 
         # Initialize window
         # -----------------
@@ -970,7 +1012,7 @@ class AddOperationWindow(tk.Toplevel):
                                          text="Periodic operation",
                                          variable=self.is_periodic,
                                          onvalue=True,
-                                         command=self.period_checked)
+                                         command=self.period_chk_update)
         self.chk_period.pack(side=tk.LEFT)
         # Entry - Period year
         frm_prd_yr = tk.Frame(master=frm_prd, bd=0)
@@ -1002,7 +1044,7 @@ class AddOperationWindow(tk.Toplevel):
             anchor=tk.E, justify=tk.RIGHT)
         lbl_prd_km.pack(side=tk.RIGHT)
         # Update entry states
-        self.period_checked()
+        self.period_chk_update()
 
         # Checkbox - done
         frm_done = tk.Frame(master=self, bd=10)
@@ -1013,7 +1055,7 @@ class AddOperationWindow(tk.Toplevel):
                                        text="Operation done",
                                        variable=self.is_done,
                                        onvalue=True,
-                                       command=self.done_checked)
+                                       command=self.done_chk_update)
         self.chk_done.pack(side=tk.LEFT)
         # Entry - done date
         frm_done_date = tk.Frame(master=frm_done, bd=0)
@@ -1047,7 +1089,7 @@ class AddOperationWindow(tk.Toplevel):
             anchor=tk.E, justify=tk.RIGHT)
         lbl_done_km.pack(side=tk.RIGHT)
         # Update entry states
-        self.done_checked()
+        self.done_chk_update()
 
         # Comment
         # Label Comment:
@@ -1067,6 +1109,11 @@ class AddOperationWindow(tk.Toplevel):
         vsbar.config(command=self.txt_cmt.yview)
         self.txt_cmt.config(yscrollcommand=vsbar.set)
         vsbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # # Disable done-controls for periodic operation if mode_edit
+        # if self.mode_edit
+        #     and self.operation.is_periodic \
+        #         and not self.operation.is_done:
 
         # Buttons OK/CANCEL
         frm_btns = tk.Frame(master=self, bd=10)
@@ -1157,7 +1204,15 @@ class AddOperationWindow(tk.Toplevel):
                 done_date = done_date.replace('.', '-')
                 done_date = datetime.strptime(done_date, '%Y-%m-%d').date()
                 done_comment = self.txt_cmt.get("1.0", tk.END + "-1c")
-                operation.done(km=done_km, date=done_date, comment=done_comment)
+                if self.mode_edit:
+                    self.operation._is_done = True
+                    self.operation.done_at_km = done_km
+                    self.operation.done_at_date = done_date
+                    self.operation.comment = done_comment
+                else:
+                    self.operation = self.operation.done(done_km,
+                                                         done_date,
+                                                         done_comment)
         except Exception as err:
             tk.messagebox.showerror(parent=self,
                                     title="Error",
@@ -1169,27 +1224,42 @@ class AddOperationWindow(tk.Toplevel):
 
     def operation_new(self):
         # Edit self.operation and put it into vehicle log book
-        self.operation_edit()
+        success = self.operation_edit()
+        if not success:
+            return False
         if self.operation.is_done:
             self.vehicle.add_operation_to_log(self.operation)
             # If operation is periodic it will be automatically pushed to
             # periodic operations catalogue
+            print('add to log')
         else:
             self.vehicle.add_operation_to_cat(self.operation)
+            print('add to cat')
+        return True
 
     def label_selected(self, event=None):
         # Called if user select label from combobox's list
-        print("label_selected: " + self.op_label.get())
-        # ToDo: update gui for new operation values
-        print("Set GUI values - update for new operation!")
+        label = self.op_label.get()
+        # Get periods for this operation
+        operation = self.vehicle.get_periodic(label)
+        # (None if not exist)
+        if operation:
+            self.is_periodic.set(True)
+            self.period_chk_update()
+            self.period_year.set(round(operation.interval_time.days/365, 1))
+            self.period_km.set(operation.interval_km)
+        else:
+            # It seems that operations is not periodic
+            self.is_periodic.set(False)
+            self.period_chk_update()
 
-    def period_checked(self):
+    def period_chk_update(self):
         # Set enabled/disabled controls to setup period for operation
         state = "normal" if self.is_periodic.get() else "disabled"
         self.txt_per_km.config(state=state)
         self.txt_per_year.config(state=state)
 
-    def done_checked(self):
+    def done_chk_update(self):
         # Set enabled/disabled controls
         state = "normal" if self.is_done.get() else "disabled"
         self.txt_done_km.config(state=state)
@@ -1198,11 +1268,121 @@ class AddOperationWindow(tk.Toplevel):
 
 class TkVehicleLogBook(siu.VehicleLogBook):
     """ Represents storage of service operations for vehicle
-    Subclass that can be linked with tkinter widgets
+    Subclass that can be linked with tkinter Table widgets based TreeView
     """
-    def __init__(self, *args, **kargs):
-        super().__init__(*args, **kargs)
+    def __init__(self, tab_log, tab_cat, tab_plan, *args, **kwargs):
+        # This flag blocks tables updating before initialisation is not
+        # finished
+        self._initialized = False
+        self.tab_log = tab_log
+        self.tab_cat = tab_cat
+        self.tab_plan = tab_plan
+        super().__init__(*args, **kwargs)
+        self._initialized = True
+        self.tabs_update()
     # ToDo: implement linkage with tables
+
+    def tabs_update(self):
+        self.tab_log_update()
+        self.tab_cat_update()
+        self.tab_plan_update()
+
+    def tab_log_update(self):
+        # Remove all items from table and add all items again
+        if not self._initialized:
+            return
+        self.tab_log.clear()
+        for op in self._operations_log:
+            self.tab_log.insert(op)
+
+    def tab_cat_update(self):
+        if not self._initialized:
+            return
+        # Remove all items from table and add all items again
+        self.tab_cat.clear()
+        for op in self._operations_cat.values():
+            self.tab_cat.insert(op)
+
+    def tab_plan_update(self):
+        if not self._initialized:
+            return
+        # Remove all items from table and add all items again
+        self.tab_plan.clear()
+        plan = self.make_maintenance_plan()
+        for op in plan:
+            self.tab_plan.insert(op)
+
+    def add_operation_to_log(self, *args, **kwargs):
+        super().add_operation_to_log(*args, **kwargs)
+        self.tabs_update()
+
+    def add_operation_to_cat(self, *args, **kwargs):
+        super().add_operation_to_cat(*args, **kwargs)
+        # We don't need to update tab_log
+        self.tab_cat_update()
+        self.tab_plan_update()
+
+    def clear_log(self):
+        super().clear_log()
+        # We don't need to update tab_cat
+        self.tab_log_update()
+        self.tab_plan_update()
+
+    def clear_all(self):
+        super().clear_all()
+        self.tabs_update()
+
+    def import_log(self, *args, **kwargs):
+        super().import_log(*args, **kwargs)
+        self.tabs_update()
+
+    def import_cat(self, *args, **kwargs):
+        super().import_cat(*args, **kwargs)
+        # We don't need to update tab_log
+        self.tab_cat_update()
+        self.tab_plan_update()
+
+    @staticmethod
+    def load(*args, **kwargs):
+        vehicle_log_book = super().load(*args, **kwargs)
+        if hasattr(vehicle_log_book, "tabs_update"):
+            vehicle_log_book.tabs_update()
+        else:
+            raise TypeError(
+                "Unable to convert VehicleLogBook to TkVehicleLogBook")
+        return vehicle_log_book
+
+    @property
+    def haul(self):
+        return self._haul
+
+    @haul.setter
+    def haul(self, new_haul):
+        if isinstance(new_haul, str) and new_haul.isdigit():
+            new_haul = float(new_haul)
+        if isinstance(new_haul, Number):
+            self._haul = new_haul
+            self._modified = True
+            self.tab_plan_update()
+        else:
+            raise TypeError(
+                "Haul value must be a Number (int, float, ...) or digit-string")
+
+    @property
+    def production_date(self):
+        return self._production_date
+
+    @production_date.setter
+    def production_date(self, new_prod_date):
+        # Car production date.
+        if isinstance(new_prod_date, date):
+            if new_prod_date != self._production_date:
+                self._modified = True
+                self._production_date = new_prod_date
+                self.tab_plan_update()
+        else:
+            raise TypeError("Argument <new_prod_date> must be an instance "
+                            "of <datetime.date> type.")
 
 
 if __name__ == "__main__":
