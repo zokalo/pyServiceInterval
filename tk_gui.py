@@ -5,7 +5,7 @@ ServiceInterval
 Application interface classes.
 """
 from collections import Iterable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import os
 from time import time
 import tkinter as tk
@@ -256,6 +256,7 @@ class MainFrame(tk.Frame):
         for i in range(10):
             oil_changed.done_at_km = i
             self.table_log.insert(oil_changed)
+            self.doc.add_operation_to_log(oil_changed)
         # 2) Tab Periodic Operations Catalogue
         tab_cat = ttk.Frame(self.tabs)
         # ... content
@@ -320,7 +321,7 @@ class MainFrame(tk.Frame):
             # Creating at first time
             not_cancelled = True  # anyway
         if not_cancelled:
-            self.doc = TkVehicleLogBook(label="Unknown Vehicle",
+            self.doc = TkVehicleLogBook(label="New Vehicle",
                                         production_date=date.today())
 
     def log_open(self, event=None):
@@ -399,11 +400,8 @@ class MainFrame(tk.Frame):
             self.master.quit()
 
     def vehicle_setup(self, event=None):
-        # Don't forget to update self.master.title()
-        # after changing vehicle properties
         VehicleSetupWindow(master=self, vehicle=self.doc)
         self.update_title()
-        print('vehicle_setup')
 
     def operation_add(self, event=None):
         AddOperationWindow(master=self, vehicle=self.doc)
@@ -477,7 +475,7 @@ class VehicleSetupWindow(tk.Toplevel):
                             anchor=tk.W, justify=tk.LEFT)
         lbl_prod.pack(side=tk.TOP, fill=tk.X)
         # Entry Vehicle production date
-        vcmd = (self.register(self.prod_date_validate),
+        vcmd = (self.register(date_validate),
                 '%i', '%P', '%S')
         # valid percent substitutions (from the Tk entry man page)
         # %d = Type of action (1=insert, 0=delete, -1 for others)
@@ -521,31 +519,6 @@ class VehicleSetupWindow(tk.Toplevel):
         self.transient(self.master)
         self.master.wait_window(self)
 
-    def prod_date_validate(self, insert_index, new_value, insert_char):
-        # Return True if new_value is valid
-        # Allowed symbols for differenet position indexes.
-        allowed = ('12', '0123456789', '0123456789', '0123456789',
-                   r'-.',
-                   '01','0123456789',
-                   r'-.',
-                   '0123',
-                   '0123456789')
-        # Check.
-        insert_index = int(insert_index)
-        if not (0 <= insert_index < len(allowed)):
-            return False
-        if len(insert_char) == 1 and \
-                        insert_char not in allowed[insert_index]:
-            return False
-        elif len(insert_char) == len(allowed):
-            try:
-                insert_char = new_value.replace('.', '-')
-                datetime.strptime(insert_char, '%Y-%m-%d').date()
-            except ValueError:
-                return False
-        return True
-
-
     def btn_ok(self, event=None):
         new_date = self.txt_date.get()
         new_label = self.txt_label.get()
@@ -563,6 +536,39 @@ class VehicleSetupWindow(tk.Toplevel):
             self.vehicle.label = new_label
             self.vehicle.production_date = new_date
             self.destroy()
+
+
+def num_validate(insert_char):
+    # only numbers and . , allowed
+    allowed = "0123456789.,"
+    if len(insert_char) == 1 and insert_char not in allowed:
+        return False
+    return True
+
+
+def date_validate(insert_index, new_value, insert_char):
+    # Return True if new_value is valid
+    # Allowed symbols for differenet position indexes.
+    allowed = ('12', '0123456789', '0123456789', '0123456789',
+               r'-.',
+               '01', '0123456789',
+               r'-.',
+               '0123',
+               '0123456789')
+    # Check.
+    insert_index = int(insert_index)
+    if not (0 <= insert_index < len(allowed)):
+        return False
+    if len(insert_char) == 1 and \
+                    insert_char not in allowed[insert_index]:
+        return False
+    elif len(insert_char) == len(allowed):
+        try:
+            insert_char = new_value.replace('.', '-')
+            datetime.strptime(insert_char, '%Y-%m-%d').date()
+        except ValueError:
+            return False
+    return True
 
 
 class ToolTip(tk.Toplevel):
@@ -875,28 +881,319 @@ def make_var_name(label):
 
 
 class AddOperationWindow(tk.Toplevel):
-    """  Modal window for adding operation
-
+    """  Modal window for adding/editing operation
     """
-    def __init__(self, master=None, vehicle=None, **options):
+    new_op_label = "New operation"
+
+    def __init__(self, vehicle, master=None, operation=None, **options):
+
+        # Initialize data fields
+        # ----------------------
+        # Vehicle Log Book object
         self.vehicle = vehicle
+        if not operation:
+            operation = siu.Operation(self.new_op_label)
+            self.window_title = "Add new operation"
+            self.operation_action = self.operation_new
+        else:
+            self.window_title = "Edit operation"
+            self.operation_action = self.operation_edit
+        # Operation object
+        self.operation = operation
+        # Selected operation label
+        self.op_label = tk.StringVar()
+        self.op_label.set(self.operation.label)
+        # All known operation labels
+        # First position allow to enter new operation label
+        self.op_list = self.vehicle.get_all_oper_labels()
+        self.op_list = list(self.op_list)
+        # If we create new operation
+        if self.operation.label == self.new_op_label:
+            if self.new_op_label in self.op_list:
+                # delete current operation label...
+                self.op_list.remove(self.new_op_label)
+            # ...and insert it first
+            self.op_list.insert(0, self.new_op_label)
+
+        # Checkbox variable - is operation periodic
+        self.is_periodic = tk.IntVar()
+        self.is_periodic.set(self.operation.is_periodic)
+        # Operation period
+        self.period_year = tk.StringVar()
+        self.period_year.set(round(self.operation.interval_time.days/365, 1))
+        self.period_km = tk.StringVar()
+        self.period_km.set(self.operation.interval_km)
+        # Checkbox variable - is operation done
+        self.is_done = tk.IntVar()
+        self.is_done.set(self.operation.is_done)
+        # Done date/km
+        self.done_date = tk.StringVar()
+        self.done_date.set(str(self.operation.done_at_date))
+        self.done_km = tk.StringVar()
+        self.done_km.set(self.operation.done_at_km)
+        # Comment
+        # Comment must be fetched from comment text widget using get()method
 
         # Initialize window
         # -----------------
         super().__init__(master, **options)
-        self.title("Add operation")
-        self.minsize(width=500, height=400)
-        self.resizable(width=tk.FALSE, height=tk.FALSE)
+        self.title(self.window_title)
+        self.minsize(width=350, height=400)
+        # self.resizable(width=tk.FALSE, height=tk.FALSE)
 
         # Add widgets
         # -----------
-        # ...
+        frm_lbl = tk.Frame(master=self, bd=10)
+        frm_lbl.pack(fill=tk.X)
+        # Label "Enter operation label:"
+        lbl_oper = tk.Label(
+            master=frm_lbl,
+            text="Enter new operation label or select exist:",
+            anchor=tk.W, justify=tk.LEFT)
+        lbl_oper.pack(side=tk.TOP, fill=tk.X)
+
+        # Combobox - select Operation Label
+        self.cmb_label = ttk.Combobox(
+            master=frm_lbl,
+            textvariable=self.op_label)
+        self.cmb_label.bind('<Return>', self.cmb_changed)
+        self.cmb_label.bind("<<ComboboxSelected>>", self.label_selected)
+        self.cmb_label['values'] = self.op_list
+        self.cmb_label.pack(side=tk.TOP, fill=tk.X)
+
+        # Checkbox - periodic
+        frm_prd = tk.Frame(master=self, bd=10)
+        frm_prd.pack(fill=tk.X, side=tk.TOP)
+        frm_prd_cb = tk.Frame(master=frm_prd, bd=0)
+        frm_prd_cb.pack(fill=tk.X, side=tk.TOP)
+        self.chk_period = tk.Checkbutton(master=frm_prd_cb,
+                                         text="Periodic operation",
+                                         variable=self.is_periodic,
+                                         onvalue=True,
+                                         command=self.period_checked)
+        self.chk_period.pack(side=tk.LEFT)
+        # Entry - Period year
+        frm_prd_yr = tk.Frame(master=frm_prd, bd=0)
+        frm_prd_yr.pack(side=tk.TOP, fill=tk.X)
+        vcmd_num = (self.register(num_validate), '%S')
+        self.txt_per_year = tk.Entry(master=frm_prd_yr,
+                                     validate="key", validatecommand=vcmd_num,
+                                     textvariable=self.period_year,
+                                     width=10)
+        self.txt_per_year.pack(side=tk.RIGHT)
+        # Label - period year
+        lbl_prd_yr = tk.Label(
+            master=frm_prd_yr,
+            text="Interval, years:",
+            anchor=tk.E, justify=tk.RIGHT)
+        lbl_prd_yr.pack(side=tk.RIGHT)
+        # Entry - Period km
+        frm_prd_km = tk.Frame(master=frm_prd, bd=0)
+        frm_prd_km.pack(side=tk.TOP, fill=tk.X)
+        self.txt_per_km = tk.Entry(master=frm_prd_km,
+                                   validate="key", validatecommand=vcmd_num,
+                                   textvariable=self.period_km,
+                                   width=10)
+        self.txt_per_km.pack(side=tk.RIGHT)
+        # Label - period km
+        lbl_prd_km = tk.Label(
+            master=frm_prd_km,
+            text="Interval, km:",
+            anchor=tk.E, justify=tk.RIGHT)
+        lbl_prd_km.pack(side=tk.RIGHT)
+        # Update entry states
+        self.period_checked()
+
+        # Checkbox - done
+        frm_done = tk.Frame(master=self, bd=10)
+        frm_done.pack(fill=tk.X, side=tk.TOP)
+        frm_done_cb = tk.Frame(master=frm_done, bd=0)
+        frm_done_cb.pack(fill=tk.X, side=tk.TOP)
+        self.chk_done = tk.Checkbutton(master=frm_done_cb,
+                                       text="Operation done",
+                                       variable=self.is_done,
+                                       onvalue=True,
+                                       command=self.done_checked)
+        self.chk_done.pack(side=tk.LEFT)
+        # Entry - done date
+        frm_done_date = tk.Frame(master=frm_done, bd=0)
+        frm_done_date.pack(side=tk.TOP, fill=tk.X)
+        vcmd_date = (self.register(date_validate),
+                     '%i', '%P', '%S')
+        self.txt_done_date = tk.Entry(master=frm_done_date,
+                                      validate="key",
+                                      validatecommand=vcmd_date,
+                                      textvariable=self.done_date,
+                                      width=10)
+        self.txt_done_date.pack(side=tk.RIGHT)
+        # Label - done date
+        lbl_done_date = tk.Label(
+            master=frm_done_date,
+            text="Date (YYYY-MM-DD):",
+            anchor=tk.E, justify=tk.RIGHT)
+        lbl_done_date.pack(side=tk.RIGHT)
+        # Entry - done km
+        frm_done_km = tk.Frame(master=frm_done, bd=0)
+        frm_done_km.pack(side=tk.TOP, fill=tk.X)
+        self.txt_done_km = tk.Entry(master=frm_done_km,
+                                   validate="key", validatecommand=vcmd_num,
+                                   textvariable=self.done_km,
+                                   width=10)
+        self.txt_done_km.pack(side=tk.RIGHT)
+        # Label - done km
+        lbl_done_km = tk.Label(
+            master=frm_done_km,
+            text="Haul, km:",
+            anchor=tk.E, justify=tk.RIGHT)
+        lbl_done_km.pack(side=tk.RIGHT)
+        # Update entry states
+        self.done_checked()
+
+        # Comment
+        # Label Comment:
+        frm_cmt = tk.Frame(master=self, bd=10)
+        frm_cmt.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.YES)
+        lbl_cmt = tk.Label(
+            master=frm_cmt,
+            text="Comment:",
+            anchor=tk.W, justify=tk.LEFT)
+        lbl_cmt.pack(side=tk.TOP, fill=tk.X)
+        # Comment Text
+        self.txt_cmt = tk.Text(master=frm_cmt)
+        self.txt_cmt.insert("1.0", self.operation.comment)
+        self.txt_cmt.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.YES)
+        # Add vertical scrollbar
+        vsbar = tk.Scrollbar(self.txt_cmt)
+        vsbar.config(command=self.txt_cmt.yview)
+        self.txt_cmt.config(yscrollcommand=vsbar.set)
+        vsbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Buttons OK/CANCEL
+        frm_btns = tk.Frame(master=self, bd=10)
+        frm_btns.pack(side=tk.BOTTOM)
+        # Button OK
+        btn_ok = tk.Button(master=frm_btns,
+                           text="Ok",
+                           command=self.btn_ok,
+                           height=1, width=10)
+        btn_ok.pack(side=tk.LEFT)
+        # btn_ok.bind("<Return>", self.btn_ok)  # Not used to allow pressing
+        # enter while writing comment text
+        # Button Cancel
+        btn_cancel = tk.Button(master=frm_btns,
+                               text="Cancel",
+                               command=self.destroy,
+                               height=1, width=10)
+        self.bind("<Escape>", lambda event: self.destroy())
+        btn_cancel.pack(side=tk.RIGHT)
 
         # Make modal
         self.focus_force()
         self.grab_set()
         self.transient(self.master)
         self.master.wait_window(self)
+
+    def cmb_changed(self, event=None):
+        """ Update labels list
+        Called when user edited operation label
+        """
+        new_label = self.op_label.get()
+        if new_label in self.op_list:
+            # If label already exist - user select exist label
+            # from list of combobutton
+            self.label_selected()
+        # Update labels list
+        self.op_list = self.vehicle.get_all_oper_labels()
+        self.op_list = list(self.op_list)
+        if self.new_op_label in self.op_list:
+            # delete current operation label...
+            self.op_list.remove(self.new_op_label)
+        # ...and insert it first
+        self.op_list.insert(0, new_label)
+        # Update combobox list
+        self.cmb_label['values'] = self.op_list
+        # print("cmb_changed" + self.op_label.get())
+
+    def btn_ok(self, event=None):
+        """Add new or edit exist operation for vehicle
+        """
+        success = self.operation_action()
+        # Close window if success
+        if success:
+            self.destroy()
+
+    def operation_edit(self, testmode=False):
+        """ Update operation data from GUI
+        :param testmode:  if True - run in test mode.
+                          Data will be added to a test operation instance
+                          to validate all values
+                          if False - run at test mode, than run in work mode to
+                          modify real operation object
+        :return:          True if success, else False
+        """
+        if not testmode:
+            # At first run in test mode
+            success = self.operation_edit(testmode=True)
+            if not success:
+                return False
+            # If we reach this line - all is ok. Modify real object
+            operation = self.operation
+        elif testmode:
+            # Run in test mode
+            operation = siu.Operation("Test")
+        else:
+            raise TypeError(
+                "Argument testmode must be <bool>, not " + str(type(testmode)))
+        # Verify GUI fields by trying to use it
+        try:
+            operation.label = self.op_label.get()
+            if self.is_periodic.get():
+                operation.interval_time = \
+                    timedelta(days=365 * float(self.period_year.get()))
+                operation.interval_km = float(self.period_km.get())
+            if self.is_done.get():
+                done_km = float(self.done_km.get())
+                done_date = self.done_date.get()
+                done_date = done_date.replace('.', '-')
+                done_date = datetime.strptime(done_date, '%Y-%m-%d').date()
+                done_comment = self.txt_cmt.get("1.0", tk.END + "-1c")
+                operation.done(km=done_km, date=done_date, comment=done_comment)
+        except Exception as err:
+            tk.messagebox.showerror(parent=self,
+                                    title="Error",
+                                    message="Wrong operation data format",
+                                    detail=err)
+            return False
+        else:
+            return True
+
+    def operation_new(self):
+        # Edit self.operation and put it into vehicle log book
+        self.operation_edit()
+        if self.operation.is_done:
+            self.vehicle.add_operation_to_log(self.operation)
+            # If operation is periodic it will be automatically pushed to
+            # periodic operations catalogue
+        else:
+            self.vehicle.add_operation_to_cat(self.operation)
+
+    def label_selected(self, event=None):
+        # Called if user select label from combobox's list
+        print("label_selected: " + self.op_label.get())
+        # ToDo: update gui for new operation values
+        print("Set GUI values - update for new operation!")
+
+    def period_checked(self):
+        # Set enabled/disabled controls to setup period for operation
+        state = "normal" if self.is_periodic.get() else "disabled"
+        self.txt_per_km.config(state=state)
+        self.txt_per_year.config(state=state)
+
+    def done_checked(self):
+        # Set enabled/disabled controls
+        state = "normal" if self.is_done.get() else "disabled"
+        self.txt_done_km.config(state=state)
+        self.txt_done_date.config(state=state)
 
 
 class TkVehicleLogBook(siu.VehicleLogBook):

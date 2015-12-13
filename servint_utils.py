@@ -509,6 +509,15 @@ class VehicleLogBook(object):
             raise TypeError("Argument <new_prod_date> must be an instance "
                             "of <datetime.date> type.")
 
+    def get_all_oper_labels(self):
+        """ Get set of all known operation labels
+        :return: set of strings
+        """
+        labels = set()
+        labels = labels.union([x.label for x in self._operations_log])
+        labels = labels.union([x for x in self._operations_cat.keys()])
+        return labels
+
     def add_operation_to_log(self, operation):
         if not isinstance(operation, Operation):
             raise TypeError("Argument <operation> must be an instance "
