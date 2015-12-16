@@ -236,7 +236,7 @@ class MainFrame(tk.Frame):
 
         # Create tabs
         # -----------
-        self.tabs = ttk.Notebook(self.master)
+        self.tabs = TabPanel(self.master)
         # 1) Tab Operations Log
         #     adding Frames as pages for the ttk.Notebook
         #     first page, which would get widgets gridded into it
@@ -403,7 +403,17 @@ class MainFrame(tk.Frame):
         AddOperationWindow(master=self, vehicle=self.doc)
 
     def operation_edit(self, event=None):
-        # ToDo: get active tab and get selected item:
+        # get active tab and get selected item:
+        tab = self.tabs.get_active_tab()
+        tree = tab.winfo_children()[0]
+        print(tree.selection())
+        if not tree.selection():
+            # Todo error nothink selected
+            return
+        item_ind = tree.index(tree.selection()[0])
+        # ToDo: FIX ERROR возвращает TreeView базовый, а не мой сабкласс с полем items_data +(((
+        operation = tree.items_data[item_ind]
+        print(operation)
         # item = self.tree.selection()[0]
         operation = None
         if operation:
@@ -752,6 +762,9 @@ class Table(object):
         # Create GUI widget and setup columns
         self._setup_widgets(parent)
 
+        # Storage for data linked with items
+        self.items_data = list()
+
         # Editable rows:
         # http://stackoverflow.com/questions/18562123/how-to-make-ttk-treeviews-rows-editable
         # Same class example:
@@ -785,7 +798,7 @@ class Table(object):
     def pack(self, *args, **kwargs):
         self.tree.pack(*args, **kwargs)
 
-    def insert(self, values, parent="", index="end", item_id=None):
+    def insert(self, values, parent="", index="end", item_id=None, linked_data=None):
         """ Insert item
 
         :param parent:  parent is the item ID of the parent item, or the empty
@@ -801,19 +814,22 @@ class Table(object):
                         Otherwise, a new unique identifier is generated.
         :param values:  Column values.
                         i.e. ("col1 value", "col2 value")
+        :param linked_data: Data linked with item
         :return:        inserted item ID. Equal to item_id, if specified.
                         (can be used to add child for this record)
         """
-        # ToDo: make multiline subitems and other ?
-        return self.tree.insert(parent,
-                                index=index,
-                                iid=item_id,
-                                values=values)
+        iid = self.tree.insert(parent,
+                               index=index,
+                               iid=item_id,
+                               values=values)
+        self.items_data.append(linked_data)
+        return iid
 
     def clear(self):
         # Remove all items from Table
         for i in self.tree.get_children():
             self.tree.delete(i)
+        self.items_data.clear()
 
 
 class OperationsTable(Table):
@@ -837,8 +853,9 @@ class OperationsTable(Table):
             raise ValueError("Operation must be done for this widget."
                              "Use Operation.done() method before.")
         item = (operation.done_at_date, operation.done_at_km, operation.label)
-        iid = super().insert(item)
-        super().insert(parent=iid, values=("", "", operation.comment))
+        iid = super().insert(item, linked_data=operation)
+        super().insert(parent=iid,
+                       values=("", "", operation.comment))
 
 
 class PeriodicOperationsTable(Table):
@@ -862,7 +879,7 @@ class PeriodicOperationsTable(Table):
             raise ValueError("Operation must be periodic this widget.")
         interval_time = round(operation.interval_time.days/365, 1)
         item = (interval_time, operation.interval_km, operation.label)
-        iid = super().insert(item)
+        iid = super().insert(item, linked_data=operation)
         super().insert(parent=iid, values=("", "", operation.comment))
 
 
@@ -891,8 +908,9 @@ class MaintenancePlanTable(Table):
             raise ValueError("Operation must be done for this widget."
                              "Use Operation.done() method before.")
         item = (operation.done_at_date, operation.done_at_km, operation.label)
-        iid = super().insert(item)
+        iid = super().insert(item, linked_data=operation)
         super().insert(parent=iid, values=("", "", operation.comment))
+
 
 def make_var_name(label):
     """ Generate correct variable name from text label (or iterable array of labels)
@@ -1383,6 +1401,24 @@ class TkVehicleLogBook(siu.VehicleLogBook):
         else:
             raise TypeError("Argument <new_prod_date> must be an instance "
                             "of <datetime.date> type.")
+
+
+class TabPanel(ttk.Notebook):
+    """Added fields for linked data
+    Implemented not in all class interface functions
+    """
+    def __init__(self, *args, **kwargs):
+        self.tabs_storage = list()
+        super().__init__(*args, **kwargs)
+
+    def add(self, child, **kw):
+        super().add(child, **kw)
+        self.tabs_storage.append(child)
+
+    def get_active_tab(self):
+        ind = self.index("current")
+        return self.tabs_storage[ind]
+
 
 
 if __name__ == "__main__":
