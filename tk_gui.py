@@ -403,29 +403,29 @@ class MainFrame(tk.Frame):
         AddOperationWindow(master=self, vehicle=self.doc)
 
     def operation_edit(self, event=None):
-        # get active tab and get selected item:
+        # get active tab
         tab = self.tabs.get_active_tab()
+        # get treeview-table in active tab
         tree = tab.winfo_children()[0]
-        print(tree.selection())
-        if not tree.selection():
-            # Todo error nothink selected
-            return
-        item_ind = tree.index(tree.selection()[0])
-        # ToDo: FIX ERROR возвращает TreeView базовый, а не мой сабкласс с полем items_data +(((
-        operation = tree.items_data[item_ind]
-        print(operation)
-        # item = self.tree.selection()[0]
-        operation = None
-        if operation:
-            AddOperationWindow(master=self,
-                               vehicle=self.doc,
-                               operation=operation)
+        # get operation by selection in treeview-table
+        try:
+            operation = self.doc.get_op_by_selection(tree)
+        except ValueError as err:
+            tk.messagebox.showwarning(parent=self,
+                                      title="Warning",
+                                      message="Unable to edit selection",
+                                      detail=err)
         else:
-            tk.messagebox.showwarning(
-                parent=self.master,
-                title="Edit item warning",
-                message="No selected item in active tab to edit ",
-                detail="Select item and retry.")
+            if operation:
+                AddOperationWindow(master=self,
+                                   vehicle=self.doc,
+                                   operation=operation)
+            else:
+                tk.messagebox.showwarning(
+                    parent=self.master,
+                    title="Edit item warning",
+                    message="No selected item in active tab to edit ",
+                    detail="Select item and retry.")
 
     def operation_delete(self, event=None):
         print('operation_delete')
@@ -465,6 +465,7 @@ class VehicleSetupWindow(tk.Toplevel):
         self.title("Vehicle properties")
         self.minsize(width=500, height=150)
         self.resizable(width=tk.FALSE, height=tk.FALSE)
+        self.update_idletasks()
 
         # Add widgets
         # -----------
@@ -762,9 +763,6 @@ class Table(object):
         # Create GUI widget and setup columns
         self._setup_widgets(parent)
 
-        # Storage for data linked with items
-        self.items_data = list()
-
         # Editable rows:
         # http://stackoverflow.com/questions/18562123/how-to-make-ttk-treeviews-rows-editable
         # Same class example:
@@ -798,7 +796,7 @@ class Table(object):
     def pack(self, *args, **kwargs):
         self.tree.pack(*args, **kwargs)
 
-    def insert(self, values, parent="", index="end", item_id=None, linked_data=None):
+    def insert(self, values, parent="", index="end", item_id=None):
         """ Insert item
 
         :param parent:  parent is the item ID of the parent item, or the empty
@@ -814,7 +812,6 @@ class Table(object):
                         Otherwise, a new unique identifier is generated.
         :param values:  Column values.
                         i.e. ("col1 value", "col2 value")
-        :param linked_data: Data linked with item
         :return:        inserted item ID. Equal to item_id, if specified.
                         (can be used to add child for this record)
         """
@@ -822,14 +819,12 @@ class Table(object):
                                index=index,
                                iid=item_id,
                                values=values)
-        self.items_data.append(linked_data)
         return iid
 
     def clear(self):
         # Remove all items from Table
         for i in self.tree.get_children():
             self.tree.delete(i)
-        self.items_data.clear()
 
 
 class OperationsTable(Table):
@@ -853,7 +848,7 @@ class OperationsTable(Table):
             raise ValueError("Operation must be done for this widget."
                              "Use Operation.done() method before.")
         item = (operation.done_at_date, operation.done_at_km, operation.label)
-        iid = super().insert(item, linked_data=operation)
+        iid = super().insert(item)
         super().insert(parent=iid,
                        values=("", "", operation.comment))
 
@@ -861,6 +856,14 @@ class OperationsTable(Table):
 class PeriodicOperationsTable(Table):
     """ Periodic operations table widget.
     """
+    # Position indexes of content in item values
+    ind_interval_time = 0
+    ind_interval_haul = 1
+    ind_label = 2
+    # example:
+    # values = tree.item(item_id, option="values")
+    # label = values[self.tab_cat.ind_label]
+
     def __init__(self, parent):
         super().__init__(headers=["Interval, year", "Interval, km", "Operation"],
                          parent=parent,
@@ -878,8 +881,13 @@ class PeriodicOperationsTable(Table):
         if not siu.Operation.is_periodic:
             raise ValueError("Operation must be periodic this widget.")
         interval_time = round(operation.interval_time.days/365, 1)
-        item = (interval_time, operation.interval_km, operation.label)
-        iid = super().insert(item, linked_data=operation)
+        # ATTENTION ! Place items with respect to class-fields ind_* :
+        item = [None]*3
+        item[self.ind_interval_time] = interval_time
+        item[self.ind_interval_haul] = operation.interval_km
+        item[self.ind_label] = operation.label
+        item = tuple(item)
+        iid = super().insert(item)
         super().insert(parent=iid, values=("", "", operation.comment))
 
 
@@ -908,7 +916,7 @@ class MaintenancePlanTable(Table):
             raise ValueError("Operation must be done for this widget."
                              "Use Operation.done() method before.")
         item = (operation.done_at_date, operation.done_at_km, operation.label)
-        iid = super().insert(item, linked_data=operation)
+        iid = super().insert(item)
         super().insert(parent=iid, values=("", "", operation.comment))
 
 
@@ -958,18 +966,23 @@ class AddOperationWindow(tk.Toplevel):
         self.op_label = tk.StringVar()
         self.op_label.set(self.operation.label)
         # All known operation labels
-        if self.mode_edit:
-            # Select another label forbidden. Only edit.
-            self.op_list = [self.operation.label]
-        else: # mode_new
-            # First position allow to enter new operation label
-            self.op_list = self.vehicle.get_all_oper_labels()
-            self.op_list = list(self.op_list)
-            if self.new_op_label in self.op_list:
-                # delete current operation label...
-                self.op_list.remove(self.new_op_label)
-            # ...and insert it first
-            self.op_list.insert(0, self.new_op_label)
+        # --------
+        # if self.mode_edit:
+        #     # Select another label forbidden. Only edit.
+        #     self.op_list = [self.operation.label]
+        # --------
+        # else:
+        # mode_new
+        # First position allow to enter new operation label
+        self.op_list = self.vehicle.get_all_oper_labels()
+        self.op_list = list(self.op_list)
+        if self.new_op_label in self.op_list:
+            # delete current operation label...
+            self.op_list.remove(self.new_op_label)
+        # ...and insert it first
+        self.op_list.insert(0, self.new_op_label)
+        # --------
+        # end {if self.mode_edit: ... else: ...}
 
         # Checkbox variable - is operation periodic
         self.is_periodic = tk.IntVar()
@@ -999,6 +1012,7 @@ class AddOperationWindow(tk.Toplevel):
         super().__init__(master, **options)
         self.title(self.window_title)
         self.minsize(width=350, height=400)
+        self.update_idletasks()
         # self.resizable(width=tk.FALSE, height=tk.FALSE)
 
         # Add widgets
@@ -1211,11 +1225,17 @@ class AddOperationWindow(tk.Toplevel):
                 "Argument testmode must be <bool>, not " + str(type(testmode)))
         # Verify GUI fields by trying to use it
         try:
+            # keep old label to reAdd operations to catalogue if it is periodic
+            old_label = operation.label
             operation.label = self.op_label.get()
             if self.is_periodic.get():
                 operation.interval_time = \
                     timedelta(days=365 * float(self.period_year.get()))
                 operation.interval_km = float(self.period_km.get())
+                if float(self.period_km.get()) == 0:
+                    raise ValueError(
+                        "For periodic operation interval (km) must be non-zero")
+
             if self.is_done.get():
                 done_km = float(self.done_km.get())
                 done_date = self.done_date.get()
@@ -1231,6 +1251,11 @@ class AddOperationWindow(tk.Toplevel):
                     self.operation = self.operation.done(done_km,
                                                          done_date,
                                                          done_comment)
+            if not testmode:
+                # reAdd periodic operation to catalogue with new label
+                # and rename old operations in log with label same as old label
+                self.vehicle.op_label_replace(old=old_label,
+                                              new=operation.label)
         except Exception as err:
             tk.messagebox.showerror(parent=self,
                                     title="Error",
@@ -1247,12 +1272,10 @@ class AddOperationWindow(tk.Toplevel):
             return False
         if self.operation.is_done:
             self.vehicle.add_operation_to_log(self.operation)
-            # If operation is periodic it will be automatically pushed to
+            # If operation is periodic it will be also automatically pushed to
             # periodic operations catalogue
-            print('add to log')
-        else:
+        elif self.operation.is_periodic:
             self.vehicle.add_operation_to_cat(self.operation)
-            print('add to cat')
         return True
 
     def label_selected(self, event=None):
@@ -1286,7 +1309,7 @@ class AddOperationWindow(tk.Toplevel):
 
 class TkVehicleLogBook(siu.VehicleLogBook):
     """ Represents storage of service operations for vehicle
-    Subclass that can be linked with tkinter Table widgets based TreeView
+    Subclass that can be linked with tkinter Table widgets based on TreeView
     """
     def __init__(self, tab_log, tab_cat, tab_plan, *args, **kwargs):
         # This flag blocks tables updating before initialisation is not
@@ -1298,7 +1321,45 @@ class TkVehicleLogBook(siu.VehicleLogBook):
         super().__init__(*args, **kwargs)
         self._initialized = True
         self.tabs_update()
-    # ToDo: implement linkage with tables
+
+    def op_label_replace(self, old, new):
+        """
+        - reAdd periodic operation to catalogue with new label
+        - and rename old operations in log with label same as old label
+        - [added] update tables
+         """
+        super().op_label_replace(old, new)
+        self.tabs_update()
+
+    def get_op_by_selection(self, tree):
+        """ Get operation by selection in table widget, based on treeview
+        :param tree: Tree widget based on ttk.Treeview
+        :return: <Operation> class instance
+        """
+        if not isinstance(tree, ttk.Treeview):
+            raise TypeError(
+                "Argument <tree> must be a <ttk.Treeview> type, not " +
+                str(type(tree)))
+        item_id = tree.selection()
+        if tree == self.tab_log.tree:
+            # Selection by index of item selected in tab_log
+            index = tree.index(item_id)
+            if len(self._operations_log) == 0:
+                raise ValueError("Nothing to select")
+            return self._operations_log[index]
+        elif tree == self.tab_cat.tree:
+            # selection by label of selected item in tab_cat
+            values = tree.item(item_id, option="values")
+            label = values[self.tab_cat.ind_label]
+            if not label:
+                raise ValueError("Nothing to select")
+            return self._operations_cat[label]
+        elif tree == self.tab_plan.tree:
+            raise ValueError(
+                "Unable to select item from maintenance plan."
+                "It is generated automatically and can't be edited")
+        else:
+            raise ValueError("Unknown ttk.Treeview widget in argument tree.")
 
     def tabs_update(self):
         self.tab_log_update()
@@ -1312,6 +1373,9 @@ class TkVehicleLogBook(siu.VehicleLogBook):
         self.tab_log.clear()
         for op in self._operations_log:
             self.tab_log.insert(op)
+            if op.is_periodic and op.label not in self._operations_cat:
+                # check if operation became periodic
+                self.add_operation_to_cat(op)
 
     def tab_cat_update(self):
         if not self._initialized:
@@ -1405,7 +1469,9 @@ class TkVehicleLogBook(siu.VehicleLogBook):
 
 class TabPanel(ttk.Notebook):
     """Added fields for linked data
-    Implemented not in all class interface functions
+    Linkage implemented not in all class interface functions:
+    - add()             [override]
+    - get_active_tab()  [new]
     """
     def __init__(self, *args, **kwargs):
         self.tabs_storage = list()
@@ -1418,7 +1484,6 @@ class TabPanel(ttk.Notebook):
     def get_active_tab(self):
         ind = self.index("current")
         return self.tabs_storage[ind]
-
 
 
 if __name__ == "__main__":

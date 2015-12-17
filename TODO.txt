@@ -5,6 +5,8 @@ ImportError: No module named '_tkinter', please install the python3-tk package
 $ sudo apt-get install python3-tk
 
 Add:
+sort log by haul, km
+sort cat to table by ?
 import/export with selected encoding
 command pattern undo / redo
 Make:

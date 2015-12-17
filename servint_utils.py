@@ -527,6 +527,29 @@ class VehicleLogBook(object):
             raise TypeError("Argument <new_prod_date> must be an instance "
                             "of <datetime.date> type.")
 
+    def op_label_replace(self, old, new):
+        """Rename operation
+        - reAdd periodic operation to catalogue with new label
+        - and rename old operations in log with label same as old label
+
+        :param old:  old label string, that must be replaced by new
+        :param new:  new label of operation
+         """
+        if old == new:
+            return
+
+        self._modified = True
+        for op in self._operations_log:
+            # Rename operations with  old name to new
+            if op.label == old:
+                op.label = new
+        if old in self._operations_cat:
+            # ReAdd with new label under new label-keyword
+            op = self._operations_cat[old]
+            self._operations_cat.pop(old)
+            op.label = new
+            self.add_operation_to_cat(op)
+
     def get_all_oper_labels(self):
         """ Get set of all known operation labels
         :return: set of strings
@@ -573,7 +596,8 @@ class VehicleLogBook(object):
                 self.add_operation_to_cat(operation)
 
     def add_operation_to_cat(self, operation):
-        if operation not in self._operations_cat.values():
+        if operation.is_periodic \
+                and operation not in self._operations_cat.values():
             self._modified = True
             # Default operation last completion date/haul
             last_date = self._production_date
