@@ -476,6 +476,14 @@ class VehicleLogBook(object):
         # assignment this fields through properties.
 
     @property
+    def operations_log(self):
+        return self._operations_log
+
+    @property
+    def operations_cat(self):
+        return self._operations_cat
+
+    @property
     def haul(self):
         return self._haul
 
@@ -493,6 +501,10 @@ class VehicleLogBook(object):
     @property
     def extension(self):
         return self._extension
+
+    @classmethod
+    def get_extension(cls):
+        return cls._extension
 
     @property
     def filename(self):
@@ -552,11 +564,13 @@ class VehicleLogBook(object):
 
     def get_all_oper_labels(self):
         """ Get set of all known operation labels
-        :return: set of strings
+        :return: list of strings
         """
         labels = set()
         labels = labels.union([x.label for x in self._operations_log])
         labels = labels.union([x for x in self._operations_cat.keys()])
+        labels = list(labels)
+        labels.sort()
         return labels
 
     def get_periodic(self, label):
@@ -583,6 +597,7 @@ class VehicleLogBook(object):
         self._modified = True
         # Put operation to the log-list.
         self._operations_log.append(operation)
+        self._operations_log.sort(key=lambda x: x.done_at_km)
         # If it is periodical operation
         if operation.is_periodic:
             if operation.label in self._operations_cat:
@@ -597,7 +612,7 @@ class VehicleLogBook(object):
 
     def add_operation_to_cat(self, operation):
         if operation.is_periodic \
-                and operation not in self._operations_cat.values():
+                and operation.label not in self._operations_cat.keys():
             self._modified = True
             # Default operation last completion date/haul
             last_date = self._production_date
@@ -657,6 +672,7 @@ class VehicleLogBook(object):
             if relative:
                 plan_km -= self.haul
             plan.append(operation.done(plan_km, plan_date))
+        plan.sort(key=lambda x: x.done_at_km)
         return plan
 
     def export_log(self, file):
@@ -696,10 +712,10 @@ class VehicleLogBook(object):
             file = self._filename
         # Add extension (if missed).
         ext = os.path.splitext(file)[-1]
-        if not ext:
+        if not ext or ext != self._extension:
             file += VehicleLogBook._extension
         # Serialize.
-        with gzip.open(file, 'wb') as fh:
+        with open(file, 'wb') as fh:
             pickle.dump(self, fh, pickle.HIGHEST_PROTOCOL)
         self._modified = False
         self._filename = file
@@ -721,7 +737,7 @@ class VehicleLogBook(object):
         if not ext:
             file += VehicleLogBook._extension
         # Deserialize.
-        with gzip.open(file, 'rb') as fh:
+        with open(file, 'rb') as fh:
             vehice_log_book = pickle.load(fh)
         vehice_log_book._changed = False
         # Check type.
@@ -733,6 +749,7 @@ class VehicleLogBook(object):
         if vehice_log_book._version != VehicleLogBook._version:
             warnings.warn("File {0} created by another version "
                           "of class <VehicleLogBook>".format(file), Warning)
+        vehice_log_book._modified = False
         return vehice_log_book
 
     def __str__(self):

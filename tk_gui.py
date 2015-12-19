@@ -40,6 +40,10 @@ class MainFrame(tk.Frame):
     def __init__(self, master=None, **options):
         super().__init__(master, **options)
 
+        self.filetypes = [(self.master_title + " files",
+                           siu.VehicleLogBook.get_extension()),
+                          ("All files", ".*")]
+
         # Create images
         #   Where I can find icons:
         #   https://www.iconfinder.com/search/?q=exit&price=free
@@ -59,6 +63,8 @@ class MainFrame(tk.Frame):
         # -------------------
         self.master.minsize(width=640, height=480)
         self._center()
+        self.bind("<<refresh>>", self.update_title)
+        self.master.protocol("WM_DELETE_WINDOW", self.quit)
 
         # Create menu bar
         # ---------------
@@ -283,7 +289,7 @@ class MainFrame(tk.Frame):
         self._doc = new_doc
         self.update_title()
 
-    def update_title(self):
+    def update_title(self, event=None):
         # Update main window title
         status = "*" if self.doc.is_modified else ""
         self.master.title(status + self.doc.label + " - " + self.master_title)
@@ -314,11 +320,13 @@ class MainFrame(tk.Frame):
             # Creating at first time
             not_cancelled = True  # anyway
         if not_cancelled:
-            self.doc = TkVehicleLogBook(label="New Vehicle",
-                                        production_date=date.today(),
-                                        tab_log=self.table_log,
-                                        tab_cat=self.table_cat,
-                                        tab_plan=self.table_plan)
+            self.doc = TkVehicleLogBook(
+                parent=self,
+                label="New Vehicle",
+                production_date=date.today(),
+                tab_log=self.table_log,
+                tab_cat=self.table_cat,
+                tab_plan=self.table_plan)
 
     def log_open(self, event=None):
         not_cancelled = self.ask_save()
@@ -327,15 +335,15 @@ class MainFrame(tk.Frame):
                 parent=self.master,
                 title="Open vehicle log book",
                 defaultextension=self.doc.extension,
-                filetypes=((self.master_title + " files",
-                            "*" + self.doc.extension),),
+                filetypes=self.filetypes,
                 initialfile=self.doc.label,
                 initialdir=self.doc.filename)
             if not filename:
                 return
             try:
-                self.doc = self.doc.load(filename)
+                self.doc.load(filename)
                 self.file = filename
+                self.update_title()
             except OSError as err:
                 tk.messagebox.showerror(
                     parent=self.master,
@@ -354,9 +362,7 @@ class MainFrame(tk.Frame):
             parent=self.master,
             title="Save vehicle log book as",
             defaultextension=self.doc.extension,
-            filetypes=((self.master_title + " files",
-                        "*" + self.doc.extension),
-                       ("All files", "*.*")),
+            filetypes=self.filetypes,
             initialfile=self.doc.label,
             initialdir=self.doc.filename)
         if not filename:
@@ -411,13 +417,13 @@ class MainFrame(tk.Frame):
         try:
             operation = self.doc.get_op_by_selection(tree)
         except ValueError as err:
-            tk.messagebox.showwarning(parent=self,
-                                      title="Warning",
+            tk.messagebox.showwarning(parent=self.master,
+                                      title="Edit item warning",
                                       message="Unable to edit selection",
                                       detail=err)
         else:
             if operation:
-                AddOperationWindow(master=self,
+                AddOperationWindow(master=self.master,
                                    vehicle=self.doc,
                                    operation=operation)
             else:
@@ -975,7 +981,6 @@ class AddOperationWindow(tk.Toplevel):
         # mode_new
         # First position allow to enter new operation label
         self.op_list = self.vehicle.get_all_oper_labels()
-        self.op_list = list(self.op_list)
         if self.new_op_label in self.op_list:
             # delete current operation label...
             self.op_list.remove(self.new_op_label)
@@ -1307,19 +1312,19 @@ class AddOperationWindow(tk.Toplevel):
         self.txt_done_date.config(state=state)
 
 
-class TkVehicleLogBook(siu.VehicleLogBook):
-    """ Represents storage of service operations for vehicle
-    Subclass that can be linked with tkinter Table widgets based on TreeView
+class TkVehicleLogBook(object):
+    """ Represents storage of service operations .
+    Wrapper for VehicleLogBook that can be used in Tk-GUI.
+    It linked with tkinter Table widgets based on TreeView.
     """
-    def __init__(self, tab_log, tab_cat, tab_plan, *args, **kwargs):
-        # This flag blocks tables updating before initialisation is not
-        # finished
-        self._initialized = False
+    def __init__(self, tab_log, tab_cat, tab_plan,
+                 *args, parent=None, **kwargs):
+        super().__init__()
+        self.parent = parent
         self.tab_log = tab_log
         self.tab_cat = tab_cat
         self.tab_plan = tab_plan
-        super().__init__(*args, **kwargs)
-        self._initialized = True
+        self.log_book = siu.VehicleLogBook(*args, **kwargs)
         self.tabs_update()
 
     def op_label_replace(self, old, new):
@@ -1328,8 +1333,17 @@ class TkVehicleLogBook(siu.VehicleLogBook):
         - and rename old operations in log with label same as old label
         - [added] update tables
          """
-        super().op_label_replace(old, new)
+        self.log_book.op_label_replace(old, new)
         self.tabs_update()
+
+    def make_maintenance_plan(self, *args, **kwargs):
+        return self.log_book.make_maintenance_plan(*args, **kwargs)
+
+    def get_all_oper_labels(self):
+        return self.log_book.get_all_oper_labels()
+
+    def get_periodic(self, *args, **kwargs):
+        return self.log_book.get_periodic(*args, **kwargs)
 
     def get_op_by_selection(self, tree):
         """ Get operation by selection in table widget, based on treeview
@@ -1341,25 +1355,40 @@ class TkVehicleLogBook(siu.VehicleLogBook):
                 "Argument <tree> must be a <ttk.Treeview> type, not " +
                 str(type(tree)))
         item_id = tree.selection()
+
         if tree == self.tab_log.tree:
             # Selection by index of item selected in tab_log
             index = tree.index(item_id)
-            if len(self._operations_log) == 0:
+            # Check is item in the top list
+            # if item has no parent - it is placed in the top
+            parent_id = tree.parent(item_id)
+            if parent_id:
+                # if item has parent, get parent index
+                index = tree.index(parent_id)
+            if len(self.log_book.operations_log) == 0:
                 raise ValueError("Nothing to select")
-            return self._operations_log[index]
+            return self.log_book.operations_log[index]
         elif tree == self.tab_cat.tree:
             # selection by label of selected item in tab_cat
             values = tree.item(item_id, option="values")
-            label = values[self.tab_cat.ind_label]
+            try:
+                label = values[self.tab_cat.ind_label]
+            except IndexError:
+                label = None
             if not label:
-                raise ValueError("Nothing to select")
-            return self._operations_cat[label]
+                raise ValueError("No selected item")
+            return self.log_book.operations_cat[label]
         elif tree == self.tab_plan.tree:
             raise ValueError(
                 "Unable to select item from maintenance plan."
                 "It is generated automatically and can't be edited")
         else:
             raise ValueError("Unknown ttk.Treeview widget in argument tree.")
+
+    def event_generate_update(self):
+        if self.parent:
+            self.parent.event_generate(
+                "<<refresh>>", when="tail", state=int(self.is_modified))
 
     def tabs_update(self):
         self.tab_log_update()
@@ -1368,103 +1397,117 @@ class TkVehicleLogBook(siu.VehicleLogBook):
 
     def tab_log_update(self):
         # Remove all items from table and add all items again
-        if not self._initialized:
-            return
         self.tab_log.clear()
-        for op in self._operations_log:
+        for op in self.log_book.operations_log:
             self.tab_log.insert(op)
-            if op.is_periodic and op.label not in self._operations_cat:
+            if op.is_periodic and op.label not in self.log_book.operations_cat:
                 # check if operation became periodic
                 self.add_operation_to_cat(op)
+        self.event_generate_update()
 
     def tab_cat_update(self):
-        if not self._initialized:
-            return
         # Remove all items from table and add all items again
         self.tab_cat.clear()
-        for op in self._operations_cat.values():
+        ops = list()
+        for op in self.log_book.operations_cat.values():
+            ops.append(op)
+        ops.sort(key=lambda x: x.interval_km)
+        for op in ops:
             self.tab_cat.insert(op)
+        self.event_generate_update()
 
     def tab_plan_update(self):
-        if not self._initialized:
-            return
         # Remove all items from table and add all items again
         self.tab_plan.clear()
-        plan = self.make_maintenance_plan()
+        plan = self.log_book.make_maintenance_plan()
         for op in plan:
             self.tab_plan.insert(op)
+        self.event_generate_update()
 
     def add_operation_to_log(self, *args, **kwargs):
-        super().add_operation_to_log(*args, **kwargs)
+        self.log_book.add_operation_to_log(*args, **kwargs)
         self.tabs_update()
 
     def add_operation_to_cat(self, *args, **kwargs):
-        super().add_operation_to_cat(*args, **kwargs)
+        self.log_book.add_operation_to_cat(*args, **kwargs)
         # We don't need to update tab_log
         self.tab_cat_update()
         self.tab_plan_update()
 
     def clear_log(self):
-        super().clear_log()
+        self.log_book.clear_log()
         # We don't need to update tab_cat
         self.tab_log_update()
         self.tab_plan_update()
 
     def clear_all(self):
-        super().clear_all()
+        self.log_book.clear_all()
         self.tabs_update()
 
     def import_log(self, *args, **kwargs):
-        super().import_log(*args, **kwargs)
+        self.log_book.import_log(*args, **kwargs)
         self.tabs_update()
 
     def import_cat(self, *args, **kwargs):
-        super().import_cat(*args, **kwargs)
+        self.log_book.import_cat(*args, **kwargs)
         # We don't need to update tab_log
         self.tab_cat_update()
         self.tab_plan_update()
 
-    @staticmethod
-    def load(*args, **kwargs):
-        vehicle_log_book = super().load(*args, **kwargs)
-        if hasattr(vehicle_log_book, "tabs_update"):
-            vehicle_log_book.tabs_update()
-        else:
-            raise TypeError(
-                "Unable to convert VehicleLogBook to TkVehicleLogBook")
-        return vehicle_log_book
+    def export_log(self, *args, **kwargs):
+        self.log_book.export_log(*args, **kwargs)
+
+    def export_cat(self, *args, **kwargs):
+        self.log_book.export_cat(*args, **kwargs)
+
+    def load(self, *args, **kwargs):
+        self.log_book = siu.VehicleLogBook.load(*args, **kwargs)
+        self.tabs_update()
+
+    def save(self, *args, **kwargs):
+        self.log_book.save(*args, **kwargs)
+        self.event_generate_update()
+
+    def __str__(self):
+        return self.log_book.operations_log.__str__()
 
     @property
     def haul(self):
-        return self._haul
+        return self.log_book.haul
 
     @haul.setter
     def haul(self, new_haul):
-        if isinstance(new_haul, str) and new_haul.isdigit():
-            new_haul = float(new_haul)
-        if isinstance(new_haul, Number):
-            self._haul = new_haul
-            self._modified = True
-            self.tab_plan_update()
-        else:
-            raise TypeError(
-                "Haul value must be a Number (int, float, ...) or digit-string")
+        self.log_book.haul = new_haul
+        self.tab_plan_update()
 
     @property
     def production_date(self):
-        return self._production_date
+        return self.log_book.production_date
 
     @production_date.setter
     def production_date(self, new_prod_date):
-        # Car production date.
-        if isinstance(new_prod_date, date):
-            if new_prod_date != self._production_date:
-                self._modified = True
-                self._production_date = new_prod_date
-                self.tab_plan_update()
-        else:
-            raise TypeError("Argument <new_prod_date> must be an instance "
-                            "of <datetime.date> type.")
+        self.log_book.production_date = new_prod_date
+        self.tab_plan_update()
+
+    @property
+    def is_modified(self):
+        return self.log_book.is_modified
+
+    @property
+    def extension(self):
+        return self.log_book.extension
+
+    @property
+    def filename(self):
+        return self.log_book.filename
+
+    @property
+    def label(self):
+        return self.log_book.label
+
+    @label.setter
+    def label(self, new_label):
+        self.log_book.label = new_label
 
 
 class TabPanel(ttk.Notebook):
