@@ -171,21 +171,29 @@ class Operation(object):
             raise TypeError("Date must be a <datetime.date> class instance.")
 
     def __eq__(self, other):
-        return self.done_at_km == other.done_at_km
+        return self.label == other.label and self.done_at_km == other.done_at_km
 
     def __ne__(self, other):
-        return self.done_at_km != other.done_at_km
+        return not self == other
 
     def __lt__(self, other):
+        if self.label != other.label:
+            TypeError("unorderable operations with different labels")
         return self.done_at_km < other.done_at_km
 
     def __le__(self, other):
+        if self.label != other.label:
+            TypeError("unorderable operations with different labels")
         return self.done_at_km <= other.done_at_km
 
     def __gt__(self, other):
+        if self.label != other.label:
+            TypeError("unorderable operations with different labels")
         return self.done_at_km >= other.done_at_km
 
     def __ge__(self, other):
+        if self.label != other.label:
+            TypeError("unorderable operations with different labels")
         return self.done_at_km > other.done_at_km
 
     def __repr__(self):
@@ -247,6 +255,10 @@ class OperationsList(list):
         """
         with open(file, 'w') as fh:
             for operation in self:
+                comm = operation.comment
+                # Remove empty string to prevent parsing errors on import
+                comm.replace('\n\n', '\n')
+                operation.comment = comm
                 print(operation, end="\n\n", file=fh)
 
     @staticmethod
@@ -275,7 +287,7 @@ class OperationsList(list):
 
         # Doctest for reading and parsing operation that has been done:
         >>> print(OperationsList.load('doctest.txt'))
-        [Operation(Changing the oil: engine, interval_km=10000.0, interval_year=1.0).done(km=9842.0, date=2015-12-05, comment=None)]
+        [Operation(Changing the oil: engine, interval_km=10000.0, interval_year=1.0).done(km=9842.0, date=2015-12-05, comment=)]
 
         # Format for operation that hasn't been done:
         >>> print(oil_change)
@@ -302,7 +314,7 @@ class OperationsList(list):
         interval_month = None
         done_at_km = None
         done_at_date = None
-        comment = None
+        comment = ""
         # Operation done flag
         is_done = False
         # Control line numbers
@@ -333,7 +345,7 @@ class OperationsList(list):
                     interval_month = None
                     done_at_km = None
                     done_at_date = None
-                    comment = None
+                    comment = ""
                     # Operation done flag
                     is_done = False
                     # Control line numbers
@@ -348,7 +360,7 @@ class OperationsList(list):
                                         int(match_done.group('dd')))
                     nline_done_first = num
                 # Next line after match_done line - is label
-                if match_done and num - 1 == nline_done_first:
+                if is_done and num - 1 == nline_done_first:
                     label = line
                 # Check for intervals line
                 match_interval = re_interval.search(line)
@@ -364,12 +376,18 @@ class OperationsList(list):
                         raise ValueError("Unable to parse line: \n" + line)
                     interval_km = int(float(match_interval.group('km')))
 
-                    if not match_done:
+                    if not is_done:
                         label = line_previous
                 # Next line after label - is intervals. Already parsed.
                 # Next line after intervals - is comment
-                if match_done and num - 3 == nline_done_first:
-                    comment = line
+                if is_done and num - 3 == nline_done_first:
+                    if comment:
+                        comment += "\n" + line
+                    else:
+                        comment = line
+                    # Comment was the last part.
+                    # For multiline comments...
+                    nline_done_first += 1
                 # Keep previous line. We can detect operation that hasn't been
                 # done only from second string. In this case previous line will
                 # be used as label.
@@ -643,6 +661,34 @@ class VehicleLogBook(object):
         self._operations_log.clear()
         self._operations_cat.clear()
 
+    def remove_from_log(self, operations):
+        """ Remove specified operation from oeprations list
+        :param operations: list of operations
+        """
+        for op in operations:
+            self._operations_log.remove(op)
+        self._modified = True
+
+    def remove_from_cat(self, operations):
+        for op in operations:
+
+            # Remove all operations in log with the same labels.
+            # ... get all indexes of items with the same lables
+            inds = [ind for ind, op_in_log
+                    in enumerate(self._operations_log)
+                    if op_in_log.label == op.label]
+            # we need to start removing from the end to prevent shift of indexes
+            # after removing elements
+            inds.reverse()
+            # ... pop all items with this indexes
+            for ind in inds:
+                self._operations_log.pop(ind)
+
+            # Also remove operation from catalogue.
+            del self._operations_cat[op.label]
+
+        self._modified = True
+
     def make_maintenance_plan(self, haul=None, relative=True):
         """ Make plan of periodic operations that must be performed.
 
@@ -685,6 +731,12 @@ class VehicleLogBook(object):
         # Clear last operation info and convert it to <OperationsList> type.
         cat = OperationsList([x.undo() for x in cat])
         cat.save(file)
+
+    def export_plan(self, file, haul=None):
+        # Export maintenance plan to txt file.
+        plan = self.make_maintenance_plan(haul)
+        plan = OperationsList([x for x in plan])
+        plan.save(file)
 
     def import_log(self, file):
         self._modified = True
@@ -750,6 +802,7 @@ class VehicleLogBook(object):
             warnings.warn("File {0} created by another version "
                           "of class <VehicleLogBook>".format(file), Warning)
         vehice_log_book._modified = False
+        vehice_log_book._filename = file
         return vehice_log_book
 
     def __str__(self):

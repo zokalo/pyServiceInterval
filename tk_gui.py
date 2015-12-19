@@ -36,6 +36,9 @@ oil_changed = oil_change.done(km=98421,
 class MainFrame(tk.Frame):
     master_title = "Service Interval"
     tooltip_delay = 0.5
+    extension_imp_exp = ".txt"
+    extensions_imp_exp = [("Text files", ".txt"),
+                          ("All files", ".*")]
 
     def __init__(self, master=None, **options):
         super().__init__(master, **options)
@@ -246,29 +249,32 @@ class MainFrame(tk.Frame):
         # 1) Tab Operations Log
         #     adding Frames as pages for the ttk.Notebook
         #     first page, which would get widgets gridded into it
-        tab_log = ttk.Frame(self.tabs)
+        self.tab_log = ttk.Frame(self.tabs)
         # ToDo: add toolbar into the tab: add/edit/remove operation/clear + | + import/export/print
         # collapse/expand all buttons,
         # copy/paste/cut
         # ToDo: context menu add/edit/remove/ + cut/copy/paste
         # ... content
-        self.table_log = OperationsTable(parent=tab_log)
+        self.table_log = OperationsTable(parent=self.tab_log)
         self.table_log.pack(expand=1, fill="both")
+        self.table_log.bind("<Double-1>", self.operation_edit)
         # 2) Tab Periodic Operations Catalogue
-        tab_cat = ttk.Frame(self.tabs)
+        self.tab_cat = ttk.Frame(self.tabs)
         # ... content
-        self.table_cat = PeriodicOperationsTable(parent=tab_cat)
+        self.table_cat = PeriodicOperationsTable(parent=self.tab_cat)
         self.table_cat.pack(expand=1, fill="both")
+        self.table_cat.bind("<Double-1>", self.operation_edit)
         # 3) Tab Maintenance plan
-        tab_plan = ttk.Frame(self.tabs)
+        self.tab_plan = ttk.Frame(self.tabs)
         # ... content
         # ToDo: Add haul panel and switcher to absolute / relative
-        self.table_plan = MaintenancePlanTable(parent=tab_plan)
+        self.table_plan = MaintenancePlanTable(parent=self.tab_plan)
         self.table_plan.pack(expand=1, fill="both")
+        self.table_plan.bind('<Double-1>', lambda e: 'break')
         # Push our tabs to tabs-widget
-        self.tabs.add(tab_log, text='Operations history')
-        self.tabs.add(tab_cat, text='Periodic operations catalogue')
-        self.tabs.add(tab_plan, text='Maintenance plan')
+        self.tabs.add(self.tab_log, text='Operations history')
+        self.tabs.add(self.tab_cat, text='Periodic operations catalogue')
+        self.tabs.add(self.tab_plan, text='Maintenance plan')
         self.tabs.pack(expand=1, fill="both")
 
         # Additional elements place here
@@ -337,12 +343,11 @@ class MainFrame(tk.Frame):
                 defaultextension=self.doc.extension,
                 filetypes=self.filetypes,
                 initialfile=self.doc.label,
-                initialdir=self.doc.filename)
+                initialdir=os.path.dirname(self.doc.filename))
             if not filename:
                 return
             try:
                 self.doc.load(filename)
-                self.file = filename
                 self.update_title()
             except OSError as err:
                 tk.messagebox.showerror(
@@ -364,25 +369,90 @@ class MainFrame(tk.Frame):
             defaultextension=self.doc.extension,
             filetypes=self.filetypes,
             initialfile=self.doc.label,
-            initialdir=self.doc.filename)
+            initialdir=os.path.dirname(self.doc.filename))
         if not filename:
             return
         self.doc.save(filename)
 
     def import_log(self, event=None):
-        print('import_log')
+        filename = tk.filedialog.askopenfilename(
+                parent=self.master,
+                title="Import vehicle operations log",
+                defaultextension=self.extension_imp_exp,
+                filetypes=self.extensions_imp_exp,
+                initialfile=self.doc.label,
+                initialdir=os.path.dirname(self.doc.filename))
+        if not filename:
+            return
+        # Add extension (if missed).
+        ext = os.path.splitext(filename)[-1]
+        if not ext or ext != self.extension_imp_exp:
+            filename += self.extension_imp_exp
+        self.doc.import_log(filename)
 
     def import_cat(self, event=None):
-        print('import_cat')
+        filename = tk.filedialog.askopenfilename(
+                parent=self.master,
+                title="Import vehicle periodic operations catalogue",
+                defaultextension=self.extension_imp_exp,
+                filetypes=self.extensions_imp_exp,
+                initialfile=self.doc.label,
+                initialdir=os.path.dirname(self.doc.filename))
+        if not filename:
+            return
+        # Add extension (if missed).
+        ext = os.path.splitext(filename)[-1]
+        if not ext or ext != self.extension_imp_exp:
+            filename += self.extension_imp_exp
+        self.doc.import_cat(filename)
 
     def export_log(self, event=None):
-        print('export_log')
+        filename = tk.filedialog.asksaveasfilename(
+                parent=self.master,
+                title="Export vehicle operations log",
+                defaultextension=self.extension_imp_exp,
+                filetypes=self.extensions_imp_exp,
+                initialfile=self.doc.label,
+                initialdir=os.path.dirname(self.doc.filename))
+        if not filename:
+            return
+        # Add extension (if missed).
+        ext = os.path.splitext(filename)[-1]
+        if not ext or ext != self.extension_imp_exp:
+            filename += self.extension_imp_exp
+        self.doc.export_log(filename)
 
     def export_cat(self, event=None):
-        print('export_cat')
+        filename = tk.filedialog.asksaveasfilename(
+                parent=self.master,
+                title="Export vehicle periodic operations catalogue",
+                defaultextension=self.extension_imp_exp,
+                filetypes=self.extensions_imp_exp,
+                initialfile=self.doc.label,
+                initialdir=os.path.dirname(self.doc.filename))
+        if not filename:
+            return
+        # Add extension (if missed).
+        ext = os.path.splitext(filename)[-1]
+        if not ext or ext != self.extension_imp_exp:
+            filename += self.extension_imp_exp
+        self.doc.export_cat(filename)
 
     def export_plan(self, event=None):
-        print('export_plan')
+        filename = tk.filedialog.asksaveasfilename(
+                parent=self.master,
+                title="Export vehicle maintenance plan",
+                defaultextension=self.extension_imp_exp,
+                filetypes=self.extensions_imp_exp,
+                initialfile=self.doc.label,
+                initialdir=os.path.dirname(self.doc.filename))
+        if not filename:
+            return
+        # Add extension (if missed).
+        ext = os.path.splitext(filename)[-1]
+        if not ext or ext != self.extension_imp_exp:
+            filename += self.extension_imp_exp
+        self.doc.export_plan(filename)
 
     def print_log(self, event=None):
         print('print_log')
@@ -408,33 +478,82 @@ class MainFrame(tk.Frame):
     def operation_add(self, event=None):
         AddOperationWindow(master=self, vehicle=self.doc)
 
-    def operation_edit(self, event=None):
+    def get_selected_operations(self):
         # get active tab
         tab = self.tabs.get_active_tab()
         # get treeview-table in active tab
         tree = tab.winfo_children()[0]
         # get operation by selection in treeview-table
+        operations = self.doc.get_ops_by_selection(tree)
+        return operations
+
+    def operation_edit(self, event=None):
         try:
-            operation = self.doc.get_op_by_selection(tree)
+            operations = self.get_selected_operations()
         except ValueError as err:
             tk.messagebox.showwarning(parent=self.master,
                                       title="Edit item warning",
                                       message="Unable to edit selection",
                                       detail=err)
         else:
-            if operation:
+            if len(operations) == 1:
                 AddOperationWindow(master=self.master,
                                    vehicle=self.doc,
-                                   operation=operation)
+                                   operation=operations[0])
+            elif len(operations) > 1:
+                tk.messagebox.showwarning(
+                    parent=self.master,
+                    title="Edit item warning",
+                    message="Unable to edit multiple items",
+                    detail="Select one item and retry.")
             else:
                 tk.messagebox.showwarning(
                     parent=self.master,
                     title="Edit item warning",
                     message="No selected item in active tab to edit ",
                     detail="Select item and retry.")
+        # To prevent propagation of signal to other bindings
+        # (do not expand items)
+        return "break"
 
     def operation_delete(self, event=None):
-        print('operation_delete')
+        try:
+            operations = self.get_selected_operations()
+        except ValueError as err:
+            tk.messagebox.showwarning(parent=self.master,
+                                      title="Delete item warning",
+                                      message="Unable to delete selection",
+                                      detail=err)
+        else:
+            if len(operations) > 0:
+                ans = tk.messagebox.askquestion(
+                    parent=self.master,
+                    title="Question",
+                    message="Are you sure want to delete selected item(s)?",
+                    detail="Attention! If you delete periodic operation, "
+                           "all operations with the same label will be removed",
+                    icon="question",
+                    type="yesno")
+                if ans == 'no':
+                    return
+                table = self.tabs.get_active_tab()
+                if table == self.tab_log:
+                    self.doc.remove_from_log(operations)
+                elif table == self.tab_cat:
+                    self.doc.remove_from_cat(operations)
+                else:
+                    tk.messagebox.showwarning(
+                        parent=self.master,
+                        title="Delete item warning",
+                        message="Unable to edit maintenance plan.\n"
+                                "It is generated automatically.",
+                        detail="Select item in another tab and retry.")
+            else:
+                tk.messagebox.showwarning(
+                    parent=self.master,
+                    title="Delete item warning",
+                    message="No selected item in active tab to remove it ",
+                    detail="Select item and retry.")
 
     def dlg_help(self):
         print('Help: link to source page, version, description, author contacts')
@@ -801,6 +920,9 @@ class Table(object):
 
     def pack(self, *args, **kwargs):
         self.tree.pack(*args, **kwargs)
+
+    def bind(self, *args, **kwargs):
+        self.tree.bind(*args, **kwargs)
 
     def insert(self, values, parent="", index="end", item_id=None):
         """ Insert item
@@ -1256,6 +1378,10 @@ class AddOperationWindow(tk.Toplevel):
                     self.operation = self.operation.done(done_km,
                                                          done_date,
                                                          done_comment)
+
+            if not self.is_done.get() and not self.is_periodic.get():
+                raise ValueError("Unable to create operation that is not "
+                                 "periodic and have never been done.")
             if not testmode:
                 # reAdd periodic operation to catalogue with new label
                 # and rename old operations in log with label same as old label
@@ -1327,6 +1453,16 @@ class TkVehicleLogBook(object):
         self.log_book = siu.VehicleLogBook(*args, **kwargs)
         self.tabs_update()
 
+    def remove_from_log(self, operations):
+        self.log_book.remove_from_log(operations)
+        self.tab_log_update()
+
+    def remove_from_cat(self, operations):
+        # If you delete periodic operation,
+        # all operations with the same label becames on-periodic.
+        self.log_book.remove_from_cat(operations)
+        self.tabs_update()
+
     def op_label_replace(self, old, new):
         """
         - reAdd periodic operation to catalogue with new label
@@ -1345,45 +1481,56 @@ class TkVehicleLogBook(object):
     def get_periodic(self, *args, **kwargs):
         return self.log_book.get_periodic(*args, **kwargs)
 
-    def get_op_by_selection(self, tree):
-        """ Get operation by selection in table widget, based on treeview
+    def get_ops_by_selection(self, tree):
+        """ Get operations by selection in table widget, based on treeview
         :param tree: Tree widget based on ttk.Treeview
-        :return: <Operation> class instance
+        :return: list of <Operation> class instance's
         """
         if not isinstance(tree, ttk.Treeview):
             raise TypeError(
                 "Argument <tree> must be a <ttk.Treeview> type, not " +
                 str(type(tree)))
-        item_id = tree.selection()
+        item_ids = tree.selection()
 
-        if tree == self.tab_log.tree:
-            # Selection by index of item selected in tab_log
-            index = tree.index(item_id)
-            # Check is item in the top list
-            # if item has no parent - it is placed in the top
-            parent_id = tree.parent(item_id)
-            if parent_id:
-                # if item has parent, get parent index
-                index = tree.index(parent_id)
-            if len(self.log_book.operations_log) == 0:
-                raise ValueError("Nothing to select")
-            return self.log_book.operations_log[index]
-        elif tree == self.tab_cat.tree:
-            # selection by label of selected item in tab_cat
-            values = tree.item(item_id, option="values")
-            try:
-                label = values[self.tab_cat.ind_label]
-            except IndexError:
-                label = None
-            if not label:
-                raise ValueError("No selected item")
-            return self.log_book.operations_cat[label]
-        elif tree == self.tab_plan.tree:
-            raise ValueError(
-                "Unable to select item from maintenance plan."
-                "It is generated automatically and can't be edited")
+        operations = list()
+
+        if isinstance(item_ids, tuple):
+            # Selected more than one item
+            pass
         else:
-            raise ValueError("Unknown ttk.Treeview widget in argument tree.")
+            item_ids = (item_ids,)
+
+        for item_id in item_ids:
+            if tree == self.tab_log.tree:
+                # Selection by index of item selected in tab_log
+                index = tree.index(item_id)
+                # Check is item in the top list
+                # if item has no parent - it is placed in the top
+                parent_id = tree.parent(item_id)
+                if parent_id:
+                    # if item has parent, get parent index
+                    index = tree.index(parent_id)
+                if len(self.log_book.operations_log) == 0:
+                    raise ValueError("Nothing to select")
+                operations.append(self.log_book.operations_log[index])
+            elif tree == self.tab_cat.tree:
+                # selection by label of selected item in tab_cat
+                values = tree.item(item_id, option="values")
+                try:
+                    label = values[self.tab_cat.ind_label]
+                except IndexError:
+                    label = None
+                if not label:
+                    raise ValueError("No selected item")
+                operations.append(self.log_book.operations_cat[label])
+            elif tree == self.tab_plan.tree:
+                raise ValueError(
+                    "Unable to edit maintenance plan.\n"
+                    "It is generated automatically.")
+            else:
+                raise ValueError(
+                    "Unknown ttk.Treeview widget in argument tree.")
+        return operations
 
     def event_generate_update(self):
         if self.parent:
@@ -1459,6 +1606,9 @@ class TkVehicleLogBook(object):
 
     def export_cat(self, *args, **kwargs):
         self.log_book.export_cat(*args, **kwargs)
+
+    def export_plan(self, *args, **kwargs):
+        self.log_book.export_plan(*args, **kwargs)
 
     def load(self, *args, **kwargs):
         self.log_book = siu.VehicleLogBook.load(*args, **kwargs)
