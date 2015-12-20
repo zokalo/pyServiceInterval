@@ -1,6 +1,7 @@
 # Service Interval
 An application for tracking maintenance interval of your car.
 ![ServiceInterval application screenshot](http://178.213.227.72:8080/share.cgi/pyServiceInterval.png?ssid=0zwPy6Y&fid=0zwPy6Y&open=normal&ep=)
+
 You need to customize default service operations list and entry data about all
 previous service operations with your car. After that this application can 
 advice when does your car needs in the next preventive maintenance.
