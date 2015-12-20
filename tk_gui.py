@@ -54,7 +54,7 @@ class MainFrame(tk.Frame):
         self.img_new = tk.PhotoImage(file=os.path.join(_DIR_IMG, "new.png"))
         self.img_open = tk.PhotoImage(file=os.path.join(_DIR_IMG, "open.png"))
         self.img_save = tk.PhotoImage(file=os.path.join(_DIR_IMG, "save.png"))
-        self.img_print = tk.PhotoImage(file=os.path.join(_DIR_IMG, "print.png"))
+        # self.img_print = tk.PhotoImage(file=os.path.join(_DIR_IMG, "print.png"))
         self.img_add = tk.PhotoImage(file=os.path.join(_DIR_IMG, "add.png"))
         self.img_edit = tk.PhotoImage(file=os.path.join(_DIR_IMG, "edit.png"))
         self.img_delete = tk.PhotoImage(
@@ -106,9 +106,9 @@ class MainFrame(tk.Frame):
         # File > Operations history > Export...
         menu_log.add_command(label="Export...", command=self.export_log,
                              underline=0)           # underline character
-        # File > Operations history > Print...
-        menu_log.add_command(label="Print...", command=self.print_log,
-                             underline=0)           # underline character
+        # # File > Operations history > Print...
+        # menu_log.add_command(label="Print...", command=self.print_log,
+        #                      underline=0)           # underline character
         # File > Periodic op. catalogue SUB_MENU
         menu_cat = tk.Menu(menu_file, tearoff=0)
         menu_file.add_cascade(label='Periodic operations catalogue',
@@ -119,9 +119,9 @@ class MainFrame(tk.Frame):
         # File > Periodic op. catalogue > Export...
         menu_cat.add_command(label="Export...", command=self.export_cat,
                              underline=0)           # underline character
-        # File > Periodic op. catalogue > Print...
-        menu_cat.add_command(label="Print...", command=self.print_cat,
-                             underline=0)           # underline character
+        # # File > Periodic op. catalogue > Print...
+        # menu_cat.add_command(label="Print...", command=self.print_cat,
+        #                      underline=0)           # underline character
         # File > Maintenance plan SUB_MENU
         menu_plan = tk.Menu(menu_file, tearoff=0)
         menu_file.add_cascade(label='Maintenance plan',
@@ -129,9 +129,9 @@ class MainFrame(tk.Frame):
         # File > Maintenance plan > Export...
         menu_plan.add_command(label="Export...", command=self.export_plan,
                              underline=0)           # underline character
-        # File > Maintenance plan > Print...
-        menu_plan.add_command(label="Print...", command=self.print_plan,
-                             underline=0)           # underline character
+        # # File > Maintenance plan > Print...
+        # menu_plan.add_command(label="Print...", command=self.print_plan,
+        #                      underline=0)           # underline character
         # File > Exit
         menu_file.add_separator()
         menu_file.add_command(label="Exit", command=self.quit,
@@ -189,13 +189,13 @@ class MainFrame(tk.Frame):
         self.btn_save.pack(side=tk.LEFT, padx=2, pady=2)
         ToolTip(self.btn_save, msg="Save",
                 follow=False, delay=self.tooltip_delay)
-        # Print (active tab)
-        self.btn_print = tk.Button(self.toolbar, image=self.img_print,
-                                  relief=tk.FLAT,
-                                  command=self.print_active_tab)
-        self.btn_print.pack(side=tk.LEFT, padx=2, pady=2)
-        ToolTip(self.btn_print, msg="Print active tab content",
-                follow=False, delay=self.tooltip_delay)
+        # # Print (active tab)
+        # self.btn_print = tk.Button(self.toolbar, image=self.img_print,
+        #                           relief=tk.FLAT,
+        #                           command=self.print_active_tab)
+        # self.btn_print.pack(side=tk.LEFT, padx=2, pady=2)
+        # ToolTip(self.btn_print, msg="Print active tab content",
+        #         follow=False, delay=self.tooltip_delay)
         # Separator 1
         sep = ttk.Separator(self.toolbar, orient=tk.VERTICAL)
         sep.pack(side=tk.LEFT, padx=2, pady=2, fill="both")
@@ -250,7 +250,6 @@ class MainFrame(tk.Frame):
         #     adding Frames as pages for the ttk.Notebook
         #     first page, which would get widgets gridded into it
         self.tab_log = ttk.Frame(self.tabs)
-        # ToDo: add toolbar into the tab: add/edit/remove operation/clear + | + import/export/print
         # collapse/expand all buttons,
         # copy/paste/cut
         # ToDo: context menu add/edit/remove/ + cut/copy/paste
@@ -454,17 +453,17 @@ class MainFrame(tk.Frame):
             filename += self.extension_imp_exp
         self.doc.export_plan(filename)
 
-    def print_log(self, event=None):
-        print('print_log')
-
-    def print_cat(self, event=None):
-        print('print_cat')
-
-    def print_plan(self, event=None):
-        print('print_plan')
-
-    def print_active_tab(self, event=None):
-        print('print_active_tab')
+    # def print_log(self, event=None):
+    #     print('print_log')
+    #
+    # def print_cat(self, event=None):
+    #     print('print_cat')
+    #
+    # def print_plan(self, event=None):
+    #     print('print_plan')
+    #
+    # def print_active_tab(self, event=None):
+    #     print('print_active_tab')
 
     def quit(self, event=None):
         not_cancelled = self.ask_save()
@@ -556,7 +555,28 @@ class MainFrame(tk.Frame):
                     detail="Select item and retry.")
 
     def dlg_help(self):
-        print('Help: link to source page, version, description, author contacts')
+        tk.messagebox.showinfo(
+            parent=self.master,
+            title="About {0} v{1}".format(
+                self.master_title, siu.VERSION),
+            message=
+            "This application designed to simplify car maintenance planning.",
+            detail=
+            "You need to customize default service operations list and entry "
+            "data about all previous service operations with your car. After "
+            "that this application can advice when does your car needs in the "
+            "next preventive maintenance.\n\n"
+            "I hope it will be helpful for you. So I followed the idea of "
+            "application that was:\n"
+            "1. lightweight: no site-packages and no installation needed\n"
+            "2. provides easy way to keep and manage data\n"
+            "3. allow reliable data import/export\n"
+            "4. opensource: it released under GPL v3.0 license\n"
+            "5. crossplatform\n\n\n"
+            "Source (see for updates):\n"
+            "www.github.com/zokalo/pyServiceInterval\n\n"
+            "Author:\tDon Dmitriy Sergeevich\n\n"
+            "Send your feedback to dondmitriys@gmail.com")
 
     def _center(self):
         # Center window at the screen

@@ -6,7 +6,6 @@ Application implementation classes.
 """
 from copy import copy
 from datetime import date, timedelta
-import gzip
 from numbers import Number
 import os
 import pickle
@@ -16,7 +15,7 @@ import warnings
 __author__ = 'Don D.S.'
 
 # Version of ServiceInterval.
-_VERSION = (1, 0)
+VERSION = (1, 0)
 
 
 class Operation(object):
@@ -90,7 +89,7 @@ class Operation(object):
     def undo(self):
         # Clear information about operation completion
         self.done_at_km = 0
-        self.done_at_date = None
+        self._done_at_date = None
         self.comment = ""
         self._is_done = False
 
@@ -457,8 +456,6 @@ class VehicleLogBook(object):
     """
     # Extension for files of class serialization
     _extension = ".sif"
-    # Version identifier
-    _version = _VERSION
 
     def __init__(self, label, production_date, operations_cat=tuple()):
         """
@@ -470,6 +467,9 @@ class VehicleLogBook(object):
                                  class)
         """
         super().__init__()
+        # Version identifier
+        self._version = VERSION
+
         self._production_date = None
         self._filename = ""  # filename where object saved
         # Car label
@@ -729,7 +729,9 @@ class VehicleLogBook(object):
         # Export periodic operations catalogue to txt file.
         cat = self._operations_cat.values()
         # Clear last operation info and convert it to <OperationsList> type.
-        cat = OperationsList([x.undo() for x in cat])
+        cat = OperationsList([x for x in cat])
+        for x in cat:
+            x.undo()
         cat.save(file)
 
     def export_plan(self, file, haul=None):
@@ -798,7 +800,7 @@ class VehicleLogBook(object):
                 file,
                 type(vehice_log_book)))
         # Check version.
-        if vehice_log_book._version != VehicleLogBook._version:
+        if vehice_log_book._version != VERSION:
             warnings.warn("File {0} created by another version "
                           "of class <VehicleLogBook>".format(file), Warning)
         vehice_log_book._modified = False
